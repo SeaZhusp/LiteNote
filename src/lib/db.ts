@@ -25,6 +25,9 @@ export const DEFAULT_SETTINGS = {
   focusMode: false,
   fullWindowWidth: 360,
   fullWindowHeight: 620,
+  shortcutToggleWindow: "CmdOrCtrl+Shift+L",
+  shortcutFocusMode: "CmdOrCtrl+Shift+F",
+  shortcutPin: "CmdOrCtrl+Shift+P",
 };
 
 /** 设置项的运行时类型（非字面量） */
@@ -39,6 +42,9 @@ export interface AppSettings {
   readonly focusMode: boolean;
   readonly fullWindowWidth: number;
   readonly fullWindowHeight: number;
+  readonly shortcutToggleWindow: string;
+  readonly shortcutFocusMode: string;
+  readonly shortcutPin: string;
 }
 
 export async function getDb(): Promise<Database> {

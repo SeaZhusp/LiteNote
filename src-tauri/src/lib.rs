@@ -307,6 +307,25 @@ fn read_reminder_mode(conn: &Connection) -> String {
     .unwrap_or_else(|_| "popup".to_string())
 }
 
+fn read_setting_string(conn: &Connection, key: &str, default: &str) -> String {
+    let has_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if !has_table {
+        return default.to_string();
+    }
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        [key],
+        |row| row.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| default.to_string())
+}
+
 fn read_setting_bool(conn: &Connection, key: &str, default: bool) -> bool {
     let has_table: bool = conn
         .query_row(
@@ -699,11 +718,91 @@ fn set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
     apply_always_on_top(&app, enabled)
 }
 
+/// 重新注册全局快捷键（前端修改快捷键设置后调用）
+#[tauri::command]
+fn update_shortcuts(app: AppHandle) -> Result<(), String> {
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| format!("取消注册快捷键失败: {e}"))?;
+    register_all_shortcuts(&app)
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
+}
+
+/// 从 settings 表读取快捷键配置并注册全局快捷键（空字符串 = 不注册）
+fn register_all_shortcuts<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let (toggle_window, toggle_focus, toggle_pin) = match litenote_db_path(app) {
+        Some(db_path) if db_path.exists() => match Connection::open(&db_path) {
+            Ok(conn) => (
+                read_setting_string(&conn, "shortcutToggleWindow", "CmdOrCtrl+Shift+L"),
+                read_setting_string(&conn, "shortcutFocusMode", "CmdOrCtrl+Shift+F"),
+                read_setting_string(&conn, "shortcutPin", "CmdOrCtrl+Shift+P"),
+            ),
+            Err(_) => (
+                "CmdOrCtrl+Shift+L".to_string(),
+                "CmdOrCtrl+Shift+F".to_string(),
+                "CmdOrCtrl+Shift+P".to_string(),
+            ),
+        },
+        _ => (
+            "CmdOrCtrl+Shift+L".to_string(),
+            "CmdOrCtrl+Shift+F".to_string(),
+            "CmdOrCtrl+Shift+P".to_string(),
+        ),
+    };
+
+    let mut errors: Vec<String> = Vec::new();
+
+    if !toggle_window.is_empty() {
+        let handle = app.clone();
+        if let Err(e) = app.global_shortcut().on_shortcut(
+            toggle_window.as_str(),
+            move |_app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    toggle_main_window(&handle);
+                }
+            },
+        ) {
+            errors.push(format!("{toggle_window}: {e}"));
+        }
+    }
+
+    if !toggle_focus.is_empty() {
+        if let Err(e) = app.global_shortcut().on_shortcut(
+            toggle_focus.as_str(),
+            move |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let _ = toggle_focus_mode(app);
+                }
+            },
+        ) {
+            errors.push(format!("{toggle_focus}: {e}"));
+        }
+    }
+
+    if !toggle_pin.is_empty() {
+        if let Err(e) = app.global_shortcut().on_shortcut(
+            toggle_pin.as_str(),
+            move |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let _ = toggle_always_on_top(app);
+                }
+            },
+        ) {
+            errors.push(format!("{toggle_pin}: {e}"));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("注册快捷键失败: {}", errors.join("; ")))
+    }
 }
 
 /// 启动 Rust 端后台提醒轮询（独立于前端，确保 macOS 上窗口隐藏时也能可靠提醒）
@@ -795,6 +894,7 @@ pub fn run() {
             hide_main_window,
             set_focus_mode,
             set_always_on_top,
+            update_shortcuts,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::new().build())
@@ -892,36 +992,10 @@ pub fn run() {
             // 启动 Rust 端后台提醒轮询（独立于前端，macOS 窗口隐藏时也能可靠运行）
             start_rust_reminder_poll(app.handle());
 
-            // 全局快捷键：CmdOrCtrl+Shift+L 切换显示/隐藏
-            let shortcut_handle = app.handle().clone();
-            app.global_shortcut().on_shortcut(
-                "CmdOrCtrl+Shift+L",
-                move |_app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        toggle_main_window(&shortcut_handle);
-                    }
-                },
-            )?;
-
-            // 全局快捷键：CmdOrCtrl+Shift+F 切换专注 / 完整模式
-            app.global_shortcut().on_shortcut(
-                "CmdOrCtrl+Shift+F",
-                move |app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let _ = toggle_focus_mode(app);
-                    }
-                },
-            )?;
-
-            // 全局快捷键：CmdOrCtrl+Shift+P 切换窗口置顶
-            app.global_shortcut().on_shortcut(
-                "CmdOrCtrl+Shift+P",
-                move |app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let _ = toggle_always_on_top(app);
-                    }
-                },
-            )?;
+            // 全局快捷键：从设置中读取配置并注册
+            if let Err(e) = register_all_shortcuts(app.handle()) {
+                eprintln!("[LiteNote] 全局快捷键注册失败: {e}");
+            }
 
             Ok(())
         })

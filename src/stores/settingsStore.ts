@@ -21,6 +21,9 @@ export interface SettingsState {
   focusMode: boolean;
   fullWindowWidth: number;
   fullWindowHeight: number;
+  shortcutToggleWindow: string;
+  shortcutFocusMode: string;
+  shortcutPin: string;
   initialized: boolean;
   /** 最近一次 DB 写入错误信息，供 UI 展示 */
   lastError: string | null;
@@ -36,6 +39,7 @@ export interface SettingsActions {
   setTheme: (t: ThemeId) => void;
   setReminderMode: (m: "popup" | "system") => void;
   setFocusMode: (v: boolean) => void;
+  setShortcut: (key: "shortcutToggleWindow" | "shortcutFocusMode" | "shortcutPin", value: string) => void;
   /** 供外部同步调用：用 DB 最新值覆盖 store */
   reloadFromDb: () => Promise<void>;
   clearError: () => void;
@@ -185,6 +189,26 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
         set({ lastError: `切换模式失败: ${msg}` });
         void useSettingsStore.getState().reloadFromDb();
       });
+    },
+
+    setShortcut: (key, value) => {
+      set({ [key]: value } as Partial<SettingsState>);
+      dbWrite(
+        saveSetting(key, value),
+        `saveSetting(${key})`,
+        (msg) => {
+          set({ lastError: msg });
+          void useSettingsStore.getState().reloadFromDb();
+        },
+        () => {
+          emitSettingsChanged();
+          invoke("update_shortcuts").catch((e) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            set({ lastError: `快捷键注册失败: ${msg}` });
+            void useSettingsStore.getState().reloadFromDb();
+          });
+        },
+      );
     },
   }),
 );

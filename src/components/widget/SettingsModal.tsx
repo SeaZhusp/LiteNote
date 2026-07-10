@@ -4,6 +4,7 @@ import type { Locale, LocaleMode } from "@/i18n";
 import type { MessageKey } from "@/i18n/messages";
 import { t } from "@/i18n";
 import type { ThemeId } from "@/lib/db";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 interface SettingsModalProps {
   open: boolean;
@@ -231,20 +232,188 @@ function SettingsTabs({
   );
 }
 
-function ShortcutRow({ label, keys }: { label: string; keys: string }) {
+/* ──────────── 快捷键编辑 ──────────── */
+
+type ShortcutKey = "shortcutToggleWindow" | "shortcutFocusMode" | "shortcutPin";
+
+/** 判断是否为 macOS */
+declare global {
+  interface NavigatorUAData {
+    platform?: string;
+  }
+
+  interface Navigator {
+    userAgentData?: NavigatorUAData;
+  }
+}
+
+function isMac(): boolean {
+  return navigator.userAgentData?.platform?.toLowerCase().includes("mac") ?? navigator.userAgent.toLowerCase().includes("mac");
+}
+
+/** 将 Tauri 快捷键格式转换为显示格式 */
+function formatShortcutForDisplay(shortcut: string): string {
+  return shortcut
+    .split("+")
+    .map((part) => {
+      switch (part) {
+        case "CmdOrCtrl":
+        case "CommandOrControl":
+          return isMac() ? "⌘" : "Ctrl";
+        case "Control":
+          return "Ctrl";
+        case "Alt":
+          return isMac() ? "⌥" : "Alt";
+        case "Shift":
+          return isMac() ? "⇧" : "Shift";
+        case "Super":
+        case "Meta":
+        case "Win":
+          return isMac() ? "⌘" : "Win";
+        default:
+          return part;
+      }
+    })
+    .join(isMac() ? "" : " + ");
+}
+
+/** 将键盘事件转换为 Tauri 快捷键格式 */
+function keyEventToShortcut(e: KeyboardEvent): string | null {
+  const key = e.key;
+
+  // 忽略单独的修饰键
+  if (["Control", "Alt", "Shift", "Meta"].includes(key)) return null;
+
+  // 至少需要一个修饰键
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) return null;
+
+  const parts: string[] = [];
+
+  if (isMac()) {
+    if (e.metaKey) parts.push("CmdOrCtrl");
+    if (e.ctrlKey) parts.push("Control");
+  } else {
+    if (e.ctrlKey) parts.push("CmdOrCtrl");
+    if (e.metaKey) parts.push("Super");
+  }
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+
+  // 主键
+  let mainKey: string;
+  if (key === " ") mainKey = "Space";
+  else if (key.length === 1) mainKey = key.toUpperCase();
+  else mainKey = key;
+
+  parts.push(mainKey);
+  return parts.join("+");
+}
+
+function EditableShortcutRow({
+  label,
+  shortcutKey,
+  notSetText,
+  pressKeysText,
+  conflictText,
+  clearLabel,
+}: {
+  label: string;
+  shortcutKey: ShortcutKey;
+  notSetText: string;
+  pressKeysText: string;
+  conflictText: string;
+  clearLabel: string;
+}) {
+  const value = useSettingsStore((s) => s[shortcutKey]);
+  const setShortcut = useSettingsStore((s) => s.setShortcut);
+  const [capturing, setCapturing] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!capturing) return;
+
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === "Escape") {
+        setCapturing(false);
+        return;
+      }
+
+      if (e.key === "Backspace" || e.key === "Delete") {
+        setShortcut(shortcutKey, "");
+        setCapturing(false);
+        return;
+      }
+
+      const shortcut = keyEventToShortcut(e);
+      if (shortcut) {
+        // 检查与其他快捷键冲突
+        const state = useSettingsStore.getState();
+        const conflict = (
+          ["shortcutToggleWindow", "shortcutFocusMode", "shortcutPin"] as ShortcutKey[]
+        ).some((k) => k !== shortcutKey && state[k] === shortcut);
+        if (conflict) {
+          setError(true);
+          window.setTimeout(() => setError(false), 1500);
+          return;
+        }
+        setShortcut(shortcutKey, shortcut);
+        setCapturing(false);
+      }
+    };
+
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [capturing, shortcutKey, setShortcut]);
+
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-sm" style={{ color: "var(--ln-theme-text)" }}>{label}</span>
-      <kbd
-        className="shrink-0 rounded px-2 py-0.5 text-xs font-mono"
-        style={{
-          color: "var(--ln-theme-text-secondary)",
-          background: "var(--ln-theme-surface)",
-          border: `1px solid var(--ln-theme-border)`,
-        }}
+    <div className="flex items-center justify-between gap-2">
+      <span
+        className="text-sm whitespace-nowrap overflow-hidden text-ellipsis"
+        style={{ color: "var(--ln-theme-text)" }}
+        title={label}
       >
-        {keys}
-      </kbd>
+        {label}
+      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        {value && !capturing && (
+          <button
+            type="button"
+            onClick={() => setShortcut(shortcutKey, "")}
+            className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-xs transition hover:bg-white/10"
+            style={{ color: "var(--ln-theme-text-muted)" }}
+            title={clearLabel}
+          >
+            ×
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => { setCapturing(true); setError(false); }}
+          className="shrink-0 rounded px-2 py-0.5 text-xs font-mono transition min-w-[72px] text-center"
+          style={{
+            color: error
+              ? "#f87171"
+              : capturing
+                ? "var(--ln-theme-text-muted)"
+                : value
+                  ? "var(--ln-theme-text-secondary)"
+                  : "var(--ln-theme-text-muted)",
+            background: "var(--ln-theme-surface)",
+            border: `1px solid ${error ? "#f87171" : capturing ? "#0ea5e9" : "var(--ln-theme-border)"}`,
+          }}
+        >
+          {error
+            ? conflictText
+            : capturing
+              ? pressKeysText
+              : value
+                ? formatShortcutForDisplay(value)
+                : notSetText}
+        </button>
+      </div>
     </div>
   );
 }
@@ -440,23 +609,33 @@ export function SettingsModal({
         </section>
           </>
         ) : (
-          <section className="space-y-4">
-            <ShortcutRow
+          <section className="space-y-2.5">
+            <EditableShortcutRow
               label={mk("shortcutHideWindow")}
-              keys={mk("shortcutKeysToggleWindow")}
+              shortcutKey="shortcutToggleWindow"
+              notSetText={mk("shortcutNotSet")}
+              pressKeysText={mk("shortcutPressKeys")}
+              conflictText={mk("shortcutConflict")}
+              clearLabel={mk("shortcutClear")}
             />
-            <ShortcutRow
+            <EditableShortcutRow
               label={mk("shortcutFocusMode")}
-              keys={mk("shortcutKeysToggleFocus")}
+              shortcutKey="shortcutFocusMode"
+              notSetText={mk("shortcutNotSet")}
+              pressKeysText={mk("shortcutPressKeys")}
+              conflictText={mk("shortcutConflict")}
+              clearLabel={mk("shortcutClear")}
             />
-            <ShortcutRow
+            <EditableShortcutRow
               label={mk("shortcutPin")}
-              keys={mk("shortcutKeysTogglePin")}
+              shortcutKey="shortcutPin"
+              notSetText={mk("shortcutNotSet")}
+              pressKeysText={mk("shortcutPressKeys")}
+              conflictText={mk("shortcutConflict")}
+              clearLabel={mk("shortcutClear")}
             />
             <p className="text-xs pt-1" style={{ color: "var(--ln-theme-text-muted)" }}>
-              {locale === "zh-CN"
-                ? "全局快捷键，窗口隐藏时也可使用。"
-                : "Global shortcuts work even when the window is hidden."}
+              {mk("shortcutHint")}
             </p>
           </section>
         )}
