@@ -43,6 +43,8 @@ export interface TodoStoreActions {
   updateTodoDirect: (id: string, dueDate: number) => void;
   /** 拖拽排序：将 fromId 移到 toId 的位置 */
   reorderTodos: (fromId: string, toId: string) => void;
+  /** 复制待办到指定截止日期（生成新条目，原始不变） */
+  duplicateTodo: (id: string, dueDate: number) => void;
   clearError: () => void;
   /** 设置操作成功提示 */
   setSuccess: (msg: string) => void;
@@ -331,6 +333,52 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         dbWrite(
           updateTodo(t),
           "reorderTodos",
+          (msg) => set({ lastError: msg }),
+        );
+      }
+    },
+
+    duplicateTodo: (id, dueDate) => {
+      const original = get().todos.find((x) => x.id === id);
+      if (!original) return;
+
+      const now = Date.now();
+      const newId = crypto.randomUUID();
+      const copy: TodoItem = {
+        id: newId,
+        text: original.text,
+        colorId: original.colorId,
+        pinned: false,
+        completed: false,
+        sortOrder: original.sortOrder + 0.5,
+        createTime: now,
+        updateTime: now,
+        dueDate,
+        reminded: false,
+        isRecurring: false,
+        recurrenceType: "none",
+        recurrenceConfig: "",
+      };
+
+      // 插入到原条目后方，重排 sortOrder
+      const todos = [...get().todos];
+      const idx = todos.findIndex((x) => x.id === id);
+      if (idx === -1) return;
+      todos.splice(idx + 1, 0, copy);
+
+      const active = todos.filter((x) => !x.completed);
+      const completed = todos.filter((x) => x.completed);
+      const reordered = [
+        ...active.map((t, i) => ({ ...t, sortOrder: i + 1 })),
+        ...completed,
+      ];
+      set({ todos: reordered });
+
+      const dbCopy = reordered.find((x) => x.id === newId);
+      if (dbCopy) {
+        dbWrite(
+          insertTodo(dbCopy),
+          "duplicateTodo",
           (msg) => set({ lastError: msg }),
         );
       }

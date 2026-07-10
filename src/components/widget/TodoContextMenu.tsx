@@ -40,6 +40,7 @@ interface TodoContextMenuProps {
   onClearDueDate: () => void;
   onSetRecurrence: (type: RecurrenceType) => void;
   onClearRecurrence: () => void;
+  onCopyTo: () => void;
 }
 
 export function TodoContextMenu({
@@ -60,6 +61,7 @@ export function TodoContextMenu({
   onClearDueDate,
   onSetRecurrence,
   onClearRecurrence,
+  onCopyTo,
 }: TodoContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -241,6 +243,9 @@ export function TodoContextMenu({
       ) : null}
 
       <div className="border-t border-neutral-100">
+        <button type="button" className={item} role="menuitem" onClick={() => { onCopyTo(); onClose(); }}>
+          {mk("menuCopyTo")}
+        </button>
         <button type="button" className={item} role="menuitem" onClick={() => { onDelete(); onClose(); }}>
           {mk("menuDelete")}
         </button>

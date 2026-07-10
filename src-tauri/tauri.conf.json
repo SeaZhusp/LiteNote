@@ -43,8 +43,7 @@
     "nsis": {
       "portable": true,
       "webviewInstallMode": {
-        "type": "embedBootstrapper",
-        "silent": true
+        "type": "skip"
       }
     }
   }

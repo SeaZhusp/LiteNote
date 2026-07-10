@@ -25,7 +25,7 @@ import type { TodoColorId } from "@/types/todo";
 import { generateExportContent, saveTxt } from "@/lib/exportTodos";
 import { ClockSection } from "./ClockSection";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DueDatePicker } from "./DueDatePicker";
+import { DatePicker } from "./DatePicker";
 import { FooterBar } from "./FooterBar";
 import { HeaderBar } from "./HeaderBar";
 import { RecurrencePicker } from "./RecurrencePicker";
@@ -132,6 +132,7 @@ export function WidgetShell() {
     confirmDeleteId,
     dueDatePickerFor,
     recurrencePicker,
+    copyToPickerFor,
     setMenu,
     setConfirmClear,
     setConfirmDeleteId,
@@ -145,6 +146,8 @@ export function WidgetShell() {
     handleDueDateCancel,
     handleRecurrenceConfirm,
     handleRecurrenceCancel,
+    handleCopyToConfirm,
+    handleCopyToCancel,
     updateTodoText,
     toggleCompleted,
     reorderTodos,
@@ -416,16 +419,28 @@ export function WidgetShell() {
           onClearDueDate={menuActions.onClearDueDate}
           onSetRecurrence={menuActions.onSetRecurrence}
           onClearRecurrence={menuActions.onClearRecurrence}
+          onCopyTo={menuActions.onCopyTo}
         />
       ) : null}
 
       {!focusMode ? (
       <>
-      <DueDatePicker
+      <DatePicker
         locale={locale}
         open={dueDatePickerFor !== null}
+        title={t(locale, "duePickerTitle")}
+        showTime
         onConfirm={handleDueDateConfirm}
         onCancel={handleDueDateCancel}
+      />
+
+      <DatePicker
+        locale={locale}
+        open={copyToPickerFor !== null}
+        title={t(locale, "copyToTitle")}
+        showTime={false}
+        onConfirm={handleCopyToConfirm}
+        onCancel={handleCopyToCancel}
       />
 
       <RecurrencePicker

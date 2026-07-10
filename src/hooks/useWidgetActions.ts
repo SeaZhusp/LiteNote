@@ -26,6 +26,7 @@ export function useWidgetActions(locale: Locale) {
   const setTodoDueDate = useTodoStore((s) => s.setTodoDueDate);
   const setTodoRecurrence = useTodoStore((s) => s.setTodoRecurrence);
   const reorderTodos = useTodoStore((s) => s.reorderTodos);
+  const duplicateTodo = useTodoStore((s) => s.duplicateTodo);
   const commitTodoEdit = useTodoStore((s) => s.commitTodoEdit);
   const setSuccess = useTodoStore((s) => s.setSuccess);
 
@@ -37,6 +38,7 @@ export function useWidgetActions(locale: Locale) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [dueDatePickerFor, setDueDatePickerFor] = useState<string | null>(null);
   const [recurrencePicker, setRecurrencePicker] = useState<RecurrencePickerState | null>(null);
+  const [copyToPickerFor, setCopyToPickerFor] = useState<string | null>(null);
 
   // ── 派生数据 ──
   const menuTodo = useMemo(
@@ -135,6 +137,10 @@ export function useWidgetActions(locale: Locale) {
         setTodoRecurrence(menuTodo.id, false, "none", "");
         setTodoDueDate(menuTodo.id, 0);
       },
+      onCopyTo: () => {
+        if (!menuTodo) return;
+        setCopyToPickerFor(menuTodo.id);
+      },
     }),
     [menuTodo, togglePinned, toggleCompleted, setTodoColor, setTodoDueDate, setTodoRecurrence],
   );
@@ -152,6 +158,7 @@ export function useWidgetActions(locale: Locale) {
     confirmDeleteId,
     dueDatePickerFor,
     recurrencePicker,
+    copyToPickerFor,
     // 设置器
     setMenu,
     setConfirmClear,
@@ -172,6 +179,14 @@ export function useWidgetActions(locale: Locale) {
     handleDueDateCancel: () => setDueDatePickerFor(null),
     handleRecurrenceConfirm,
     handleRecurrenceCancel: () => setRecurrencePicker(null),
+    handleCopyToConfirm: (ts: number) => {
+      if (copyToPickerFor && ts > 0) {
+        duplicateTodo(copyToPickerFor, ts);
+        setSuccess(t(locale, "toastCopySuccess"));
+      }
+      setCopyToPickerFor(null);
+    },
+    handleCopyToCancel: () => setCopyToPickerFor(null),
     updateTodoText,
     toggleCompleted,
     reorderTodos,
