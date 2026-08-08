@@ -28,6 +28,11 @@ export const DEFAULT_SETTINGS = {
   shortcutToggleWindow: "CmdOrCtrl+Shift+L",
   shortcutFocusMode: "CmdOrCtrl+Shift+F",
   shortcutPin: "CmdOrCtrl+Shift+P",
+  // WebDAV 同步（密码不在此处，由 Rust 端加密存储）
+  webdavEnabled: false,
+  webdavUrl: "",
+  webdavUser: "",
+  webdavRemotePath: "/LiteNote/litenote.json",
 };
 
 /** 设置项的运行时类型（非字面量） */
@@ -45,6 +50,10 @@ export interface AppSettings {
   readonly shortcutToggleWindow: string;
   readonly shortcutFocusMode: string;
   readonly shortcutPin: string;
+  readonly webdavEnabled: boolean;
+  readonly webdavUrl: string;
+  readonly webdavUser: string;
+  readonly webdavRemotePath: string;
 }
 
 export async function getDb(): Promise<Database> {

@@ -5,6 +5,7 @@ import type { MessageKey } from "@/i18n/messages";
 import { t } from "@/i18n";
 import type { ThemeId } from "@/lib/db";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { webdavGetConfig, webdavSetConfig, webdavTest, webdavSyncNow, webdavRestore } from "@/lib/webdav";
 
 interface SettingsModalProps {
   open: boolean;
@@ -178,18 +179,20 @@ function CustomSelect<T extends string>({
   );
 }
 
-type SettingsTab = "general" | "shortcuts";
+type SettingsTab = "general" | "shortcuts" | "sync";
 
 function SettingsTabs({
   tab,
   onTabChange,
   generalLabel,
   shortcutsLabel,
+  syncLabel,
 }: {
   tab: SettingsTab;
   onTabChange: (t: SettingsTab) => void;
   generalLabel: string;
   shortcutsLabel: string;
+  syncLabel: string;
 }) {
   const btn = (active: boolean) =>
     `flex flex-1 items-center justify-center rounded px-2 text-[10px] leading-none transition-colors ${
@@ -227,6 +230,19 @@ function SettingsTabs({
         onClick={() => onTabChange("shortcuts")}
       >
         {shortcutsLabel}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === "sync"}
+        className={btn(tab === "sync")}
+        style={{
+          color: tab === "sync" ? "var(--ln-theme-text)" : "var(--ln-theme-text-secondary)",
+          background: tab === "sync" ? "var(--ln-theme-surface-active)" : "transparent",
+        }}
+        onClick={() => onTabChange("sync")}
+      >
+        {syncLabel}
       </button>
     </div>
   );
@@ -418,6 +434,278 @@ function EditableShortcutRow({
   );
 }
 
+/* ──────────── WebDAV 同步设置 ──────────── */
+
+const WEBDAV_PRESETS: Array<{ name: string; url: string }> = [
+  { name: "jianguoyun", url: "https://dav.jianguoyun.com/dav/" },
+];
+
+/// 同步方式选项（预留扩展，目前仅坚果云）
+const SYNC_METHODS: Array<{ value: string; labelKey: "syncPresetJianguoyun" }> = [
+  { value: "jianguoyun", labelKey: "syncPresetJianguoyun" },
+];
+
+function formatSyncTime(ts: number, neverText: string): string {
+  if (!ts) return neverText;
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function SyncSettings({ locale }: { locale: Locale }) {
+  const mk = (key: MessageKey) => t(locale, key);
+  const [enabled, setEnabled] = useState(false);
+  const [url, setUrl] = useState("");
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [remotePath, setRemotePath] = useState("/LiteNote/litenote.json");
+  const [lastSync, setLastSync] = useState(0);
+  const [busy, setBusy] = useState<"" | "test" | "sync">("");
+  const [status, setStatus] = useState<string>("");
+
+  const load = useCallback(async () => {
+    try {
+      const cfg = await webdavGetConfig();
+      setEnabled(cfg.enabled);
+      setUrl(cfg.url);
+      setUser(cfg.user);
+      setRemotePath(cfg.remotePath || "/LiteNote/litenote.json");
+      setPass(cfg.pass || "");
+      setLastSync(cfg.lastSync);
+    } catch (e) {
+      setStatus(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = useCallback(async () => {
+    const cfg: Parameters<typeof webdavSetConfig>[0] = { enabled };
+    if (url) cfg.url = url;
+    if (user) cfg.user = user;
+    if (remotePath) cfg.remotePath = remotePath;
+    // 仅当用户输入了密码才更新（留空表示保留已保存密码）
+    if (pass) cfg.pass = pass;
+    await webdavSetConfig(cfg);
+    setPass("");
+    await load();
+  }, [enabled, url, user, remotePath, pass, load]);
+
+  const onToggle = async (v: boolean) => {
+    setEnabled(v);
+    // 仅写入非空的字段，避免打开开关时清空已保存的服务器/账号配置
+    const cfg: Parameters<typeof webdavSetConfig>[0] = { enabled: v };
+    if (url) cfg.url = url;
+    if (user) cfg.user = user;
+    if (remotePath) cfg.remotePath = remotePath;
+    if (pass) cfg.pass = pass;
+    await webdavSetConfig(cfg);
+    setPass("");
+    load();
+  };
+
+  const onTest = async () => {
+    setBusy("test");
+    setStatus(mk("syncTesting"));
+    try {
+      // 先保存当前配置（含可能的新密码，留空则保留已保存密码）
+      await save();
+      const msg = await webdavTest({
+        url,
+        user,
+        pass,
+        remotePath,
+      });
+      setStatus(msg);
+    } catch (e) {
+      setStatus(mk("syncStatusError").replace("{msg}", String(e)));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const onSync = async () => {
+    setBusy("sync");
+    setStatus(mk("syncSyncing"));
+    try {
+      // 先保存当前配置（确保最新值入库），再带上当前输入框值同步，避免依赖不完整的已存配置
+      await save();
+      const msg = await webdavSyncNow({
+        url,
+        user,
+        pass,
+        remotePath,
+      });
+      setStatus(msg);
+      load();
+    } catch (e) {
+      setStatus(mk("syncStatusError").replace("{msg}", String(e)));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const onRestore = async () => {
+    if (!window.confirm(mk("syncRestoreConfirm"))) return;
+    setBusy("sync");
+    setStatus(mk("syncSyncing"));
+    try {
+      // 先保存当前配置，再带上当前输入框值恢复
+      await save();
+      const msg = await webdavRestore({
+        url,
+        user,
+        pass,
+        remotePath,
+      });
+      setStatus(msg);
+      // 通知主界面刷新待办
+      window.dispatchEvent(new CustomEvent("litenote-webdav-restored"));
+    } catch (e) {
+      setStatus(mk("syncStatusError").replace("{msg}", String(e)));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const fieldWrap: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 13,
+    color: "var(--ln-theme-text-secondary)",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+  };
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    maxWidth: 260,
+    padding: "6px 8px",
+    borderRadius: 6,
+    fontSize: 13,
+    color: "var(--ln-theme-text)",
+    background: "var(--ln-theme-surface)",
+    border: "1px solid var(--ln-theme-border)",
+  };
+
+  return (
+    <div className="space-y-4">
+      <Switch checked={enabled} onChange={onToggle} label={mk("syncEnable")} />
+
+      <div className={`space-y-3 ${enabled ? "" : "opacity-50 pointer-events-none"}`}>
+        {/* 同步方式：下拉，目前仅坚果云，预留扩展 */}
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncMethod")}</span>
+          <div style={{ minWidth: 200, maxWidth: 260 }}>
+            <CustomSelect
+              label=""
+              value="jianguoyun"
+              onChange={(v) => {
+                if (v === "jianguoyun" && url.trim() === "") {
+                  setUrl(WEBDAV_PRESETS[0].url);
+                }
+              }}
+              options={SYNC_METHODS.map((m) => ({ value: m.value, label: mk(m.labelKey) }))}
+            />
+          </div>
+        </div>
+
+        {/* 同步频率（只读展示） */}
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncFreq")}</span>
+          <span
+            className="text-xs"
+            style={{ color: "var(--ln-theme-text-secondary)", textAlign: "right" }}
+          >
+            {mk("syncFreqHint")}
+          </span>
+        </div>
+
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncServer")}</span>
+          <input
+            style={inputStyle}
+            placeholder={mk("syncServerPlaceholder")}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </div>
+
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncUser")}</span>
+          <input
+            style={inputStyle}
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+          />
+        </div>
+
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncPass")}</span>
+          <input
+            style={inputStyle}
+            type="password"
+            autoComplete="new-password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+        </div>
+
+        <div style={fieldWrap}>
+          <span style={labelStyle}>{mk("syncRemotePath")}</span>
+          <input
+            style={inputStyle}
+            value={remotePath}
+            onChange={(e) => setRemotePath(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onTest}
+            disabled={busy !== "" || !url || !user}
+            className="flex-1 rounded-md py-1.5 text-xs font-medium transition disabled:opacity-40"
+            style={{ background: "var(--ln-theme-surface)", color: "var(--ln-theme-text)" }}
+          >
+            {mk("syncTest")}
+          </button>
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={busy !== "" || !enabled}
+            className="flex-1 rounded-md py-1.5 text-xs font-medium transition disabled:opacity-40"
+            style={{ background: "#0ea5e9", color: "white" }}
+          >
+            {mk("syncNow")}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onRestore}
+          disabled={busy !== "" || !enabled}
+          className="w-full rounded-md py-1.5 text-xs font-medium transition disabled:opacity-40"
+          style={{ background: "var(--ln-theme-surface)", color: "#f87171", border: "1px solid var(--ln-theme-border)" }}
+        >
+          {mk("syncRestore")}
+        </button>
+      </div>
+
+      <div className="pt-1 text-xs space-y-1" style={{ color: "var(--ln-theme-text-muted)" }}>
+        <div>{mk("syncLast")}{formatSyncTime(lastSync, mk("syncNever"))}</div>
+        {status && <div style={{ color: "var(--ln-theme-text)" }}>{status}</div>}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsModal({
   open,
   locale,
@@ -489,10 +777,13 @@ export function SettingsModal({
           onTabChange={setTab}
           generalLabel={mk("settingsTabGeneral")}
           shortcutsLabel={mk("settingsTabShortcuts")}
+          syncLabel={mk("syncTab")}
         />
 
         <div className="min-h-[300px] overflow-y-auto">
-        {tab === "general" ? (
+        {tab === "sync" ? (
+          <SyncSettings locale={locale} />
+        ) : tab === "general" ? (
           <>
         {/* 外观 */}
         <section className="mb-5">

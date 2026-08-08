@@ -71,6 +71,7 @@ export function WidgetShell() {
   const lastTodoSuccess = useTodoStore((s) => s.lastSuccess);
   const clearTodoSuccess = useTodoStore((s) => s.clearSuccess);
   const setTodoSuccess = useTodoStore((s) => s.setSuccess);
+  const reloadFromDb = useTodoStore((s) => s.reloadFromDb);
 
   // 周日历选中日期（null 表示不筛选）
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
@@ -187,6 +188,16 @@ export function WidgetShell() {
   useEffect(() => {
     document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : "en";
   }, [locale]);
+
+  // 从云端恢复待办后，刷新主列表
+  useEffect(() => {
+    const handler = () => {
+      void reloadFromDb();
+      setTodoSuccess(t(locale, "syncStatusOk"));
+    };
+    window.addEventListener("litenote-webdav-restored", handler);
+    return () => window.removeEventListener("litenote-webdav-restored", handler);
+  }, [reloadFromDb, setTodoSuccess, locale]);
 
   useEffect(() => {
     void (async () => {

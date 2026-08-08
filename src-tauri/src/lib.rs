@@ -15,6 +15,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+mod webdav;
+
 /// 提醒提前量（毫秒），默认 15 分钟
 const REMIND_ADVANCE_MS: i64 = 15 * 60 * 1000;
 
@@ -26,7 +28,7 @@ fn window_persist_flags() -> StateFlags {
     StateFlags::SIZE | StateFlags::POSITION | StateFlags::VISIBLE
 }
 
-const SETTINGS_UPDATED_EVENT: &str = "litenote-settings-updated";
+pub(crate) const SETTINGS_UPDATED_EVENT: &str = "litenote-settings-updated";
 
 /// 循环待办：根据当前截止时间和规则计算下一次截止时间戳
 fn compute_next_due(current_due_ms: i64, recurrence_type: &str, config: &str) -> Option<i64> {
@@ -156,7 +158,7 @@ fn advance_recurring_todos(conn: &Connection, now_ms: i64) {
 }
 
 /// 与前端 `tauri-plugin-sql` 一致：数据库位于 app_config_dir/litenote.db
-fn litenote_db_path<R: Runtime>(app: &AppHandle<R>) -> Option<std::path::PathBuf> {
+pub(crate) fn litenote_db_path<R: Runtime>(app: &AppHandle<R>) -> Option<std::path::PathBuf> {
     app.path()
         .app_config_dir()
         .ok()
@@ -307,7 +309,7 @@ fn read_reminder_mode(conn: &Connection) -> String {
     .unwrap_or_else(|_| "popup".to_string())
 }
 
-fn read_setting_string(conn: &Connection, key: &str, default: &str) -> String {
+pub(crate) fn read_setting_string(conn: &Connection, key: &str, default: &str) -> String {
     let has_table: bool = conn
         .query_row(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings' LIMIT 1",
@@ -326,7 +328,7 @@ fn read_setting_string(conn: &Connection, key: &str, default: &str) -> String {
     .unwrap_or_else(|_| default.to_string())
 }
 
-fn read_setting_bool(conn: &Connection, key: &str, default: bool) -> bool {
+pub(crate) fn read_setting_bool(conn: &Connection, key: &str, default: bool) -> bool {
     let has_table: bool = conn
         .query_row(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings' LIMIT 1",
@@ -727,11 +729,43 @@ fn update_shortcuts(app: AppHandle) -> Result<(), String> {
     register_all_shortcuts(&app)
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
+}
+
+/// 通过 AppHandle 读取布尔设置（供 webdav 模块使用）
+pub(crate) fn read_setting_bool_app<R: Runtime>(app: &AppHandle<R>, key: &str, default: bool) -> bool {
+    let Some(db_path) = litenote_db_path(app) else {
+        return default;
+    };
+    if !db_path.exists() {
+        return default;
+    }
+    let Ok(conn) = Connection::open(&db_path) else {
+        return default;
+    };
+    read_setting_bool(&conn, key, default)
+}
+
+/// 通过 AppHandle 读取字符串设置（供 webdav 模块使用）
+pub(crate) fn read_setting_string_app<R: Runtime>(
+    app: &AppHandle<R>,
+    key: &str,
+    default: &str,
+) -> String {
+    let Some(db_path) = litenote_db_path(app) else {
+        return default.to_string();
+    };
+    if !db_path.exists() {
+        return default.to_string();
+    }
+    let Ok(conn) = Connection::open(&db_path) else {
+        return default.to_string();
+    };
+    read_setting_string(&conn, key, default)
 }
 
 /// 从 settings 表读取快捷键配置并注册全局快捷键（空字符串 = 不注册）
@@ -895,6 +929,12 @@ pub fn run() {
             set_focus_mode,
             set_always_on_top,
             update_shortcuts,
+            webdav::webdav_set_config,
+            webdav::webdav_get_config,
+            webdav::webdav_test,
+            webdav::webdav_sync_now,
+            webdav::webdav_restore,
+            webdav::webdav_status,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::new().build())
@@ -991,6 +1031,9 @@ pub fn run() {
 
             // 启动 Rust 端后台提醒轮询（独立于前端，macOS 窗口隐藏时也能可靠运行）
             start_rust_reminder_poll(app.handle());
+
+            // 启动 Rust 端后台 WebDAV 同步轮询（仅启用时执行单向上传）
+            webdav::start_webdav_sync_poll(app.handle());
 
             // 全局快捷键：从设置中读取配置并注册
             if let Err(e) = register_all_shortcuts(app.handle()) {
