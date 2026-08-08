@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::Duration;
 
 use chrono::{Datelike, TimeDelta, Timelike, Months, NaiveDate, DateTime};
@@ -309,6 +310,15 @@ fn read_reminder_mode(conn: &Connection) -> String {
     .unwrap_or_else(|_| "popup".to_string())
 }
 
+/// 统一打开数据库连接并启用 WAL + busy_timeout，降低与前端 tauri-plugin-sql
+/// 及 webdav 模块并发访问同一文件时的锁竞争。
+pub(crate) fn open_db(path: &Path) -> Result<Connection, String> {
+    let conn = Connection::open(path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let _ = conn.execute("PRAGMA journal_mode=WAL", []);
+    let _ = conn.execute("PRAGMA busy_timeout=5000", []);
+    Ok(conn)
+}
+
 pub(crate) fn read_setting_string(conn: &Connection, key: &str, default: &str) -> String {
     let has_table: bool = conn
         .query_row(
@@ -351,7 +361,7 @@ pub(crate) fn read_setting_bool(conn: &Connection, key: &str, default: bool) -> 
 
 fn write_setting_bool<R: Runtime>(app: &AppHandle<R>, key: &str, value: bool) -> Result<(), String> {
     let db_path = litenote_db_path(app).ok_or_else(|| "无法获取数据库路径".to_string())?;
-    let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let conn = open_db(&db_path)?;
     let json = if value { "true" } else { "false" };
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -744,7 +754,7 @@ pub(crate) fn read_setting_bool_app<R: Runtime>(app: &AppHandle<R>, key: &str, d
     if !db_path.exists() {
         return default;
     }
-    let Ok(conn) = Connection::open(&db_path) else {
+    let Ok(conn) = open_db(&db_path) else {
         return default;
     };
     read_setting_bool(&conn, key, default)
@@ -762,7 +772,7 @@ pub(crate) fn read_setting_string_app<R: Runtime>(
     if !db_path.exists() {
         return default.to_string();
     }
-    let Ok(conn) = Connection::open(&db_path) else {
+    let Ok(conn) = open_db(&db_path) else {
         return default.to_string();
     };
     read_setting_string(&conn, key, default)

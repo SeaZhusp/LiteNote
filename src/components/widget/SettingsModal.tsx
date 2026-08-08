@@ -436,10 +436,6 @@ function EditableShortcutRow({
 
 /* ──────────── WebDAV 同步设置 ──────────── */
 
-const WEBDAV_PRESETS: Array<{ name: string; url: string }> = [
-  { name: "jianguoyun", url: "https://dav.jianguoyun.com/dav/" },
-];
-
 /// 同步方式选项（预留扩展，目前仅坚果云）
 const SYNC_METHODS: Array<{ value: string; labelKey: "syncPresetJianguoyun" }> = [
   { value: "jianguoyun", labelKey: "syncPresetJianguoyun" },
@@ -599,7 +595,7 @@ function SyncSettings({ locale }: { locale: Locale }) {
       <Switch checked={enabled} onChange={onToggle} label={mk("syncEnable")} />
 
       <div className={`space-y-3 ${enabled ? "" : "opacity-50 pointer-events-none"}`}>
-        {/* 同步方式：下拉，目前仅坚果云，预留扩展 */}
+        {/* 同步方式：下拉，目前仅坚果云，预留扩展。默认已带入预设地址，无需手动切换 */}
         <div style={fieldWrap}>
           <span style={labelStyle}>{mk("syncMethod")}</span>
           <div style={{ minWidth: 200, maxWidth: 260 }}>
@@ -607,9 +603,8 @@ function SyncSettings({ locale }: { locale: Locale }) {
               label=""
               value="jianguoyun"
               onChange={(v) => {
-                if (v === "jianguoyun" && url.trim() === "") {
-                  setUrl(WEBDAV_PRESETS[0].url);
-                }
+                // 预留：未来接入其他同步方式时，在此根据 v 填入对应预设地址
+                void v;
               }}
               options={SYNC_METHODS.map((m) => ({ value: m.value, label: mk(m.labelKey) }))}
             />

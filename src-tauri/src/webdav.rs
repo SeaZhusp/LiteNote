@@ -1,11 +1,13 @@
 //! WebDAV 同步模块
 //!
 //! 设计：
-//! - 默认「单向上传」：本地 todos 表 → 远端单文件 `litenote.json`
+//! - 双向同步：本地 todos 表与远端单文件 `litenote.json` 按条目 `update_time` 合并
+//!   （last-write-wins），避免多设备互相覆盖丢数据
 //! - 提供「手动恢复」：拉取远端 JSON 覆盖本地（由前端在用户确认后调用）
 //! - 坚果云等兼容 WebDAV 的网盘均可使用
-//! - 密码使用 aes-gcm 简单加密后存入 settings 表（非明文）
+//! - 密码使用 aes-gcm 随机 nonce 加密后存入 settings 表（非明文）
 
+use std::path::Path;
 use std::time::Duration;
 
 use aes_gcm::{
@@ -30,9 +32,8 @@ const SYNC_POLL_INTERVAL_SECS: u64 = 300;
 
 /// 简单加密密钥派生：基于固定 salt + 应用标识（设备级弱密钥，仅防明文泄漏）
 const ENC_KEY_SALT: &[u8] = b"litenote-webdav-salt";
-/// AES-GCM 要求 nonce 恰好 12 字节
-const ENC_NONCE: &[u8] = b"litenote_12b"; // 恰好 12 字节：litenote(8)+_(1)+12b(3)
-const _NONCE_LEN_CHECK: () = assert!(ENC_NONCE.len() == 12, "ENC_NONCE 必须是 12 字节");
+/// AES-GCM nonce 长度必须为 12 字节
+const ENC_NONCE_LEN: usize = 12;
 
 // ──────────────── 同步数据模型 ────────────────
 
@@ -90,37 +91,52 @@ fn derive_key() -> [u8; 32] {
 }
 
 fn encrypt_secret(plain: &str) -> Result<String, String> {
-    if ENC_NONCE.len() != 12 {
-        eprintln!("[webdav] 加密失败：ENC_NONCE 长度 {} != 12", ENC_NONCE.len());
-        return Err(format!("加密 nonce 长度错误: {} 字节（需 12）", ENC_NONCE.len()));
-    }
-    let cipher = Aes256Gcm::new_from_slice(&derive_key()).map_err(|e| format!("加密初始化失败: {e}"))?;
-    let nonce = Nonce::from_slice(ENC_NONCE);
-    let ciphertext = cipher
+    let cipher =
+        Aes256Gcm::new_from_slice(&derive_key()).map_err(|e| format!("加密初始化失败: {e}"))?;
+    // 每次加密使用随机 nonce，避免固定 nonce 复用的密码学缺陷
+    let mut nonce_bytes = [0u8; ENC_NONCE_LEN];
+    // 使用 rand 的线程安全 RNG 生成随机数
+    use rand::RngCore;
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let mut ciphertext = cipher
         .encrypt(nonce, plain.as_bytes())
         .map_err(|e| format!("加密失败: {e}"))?;
-    Ok(B64.encode(ciphertext))
+    // 存储格式：nonce(12字节) ++ ciphertext，再整体 base64
+    let mut out = Vec::with_capacity(ENC_NONCE_LEN + ciphertext.len());
+    out.extend_from_slice(&nonce_bytes);
+    out.append(&mut ciphertext);
+    Ok(B64.encode(out))
 }
 
 fn decrypt_secret(cipher_b64: &str) -> Result<String, String> {
-    if ENC_NONCE.len() != 12 {
-        eprintln!("[webdav] 解密失败：ENC_NONCE 长度 {} != 12", ENC_NONCE.len());
-        return Err(format!("解密 nonce 长度错误: {} 字节（需 12）", ENC_NONCE.len()));
-    }
-    let cipher = Aes256Gcm::new_from_slice(&derive_key()).map_err(|e| format!("解密初始化失败: {e}"))?;
-    let nonce = Nonce::from_slice(ENC_NONCE);
+    let cipher =
+        Aes256Gcm::new_from_slice(&derive_key()).map_err(|e| format!("解密初始化失败: {e}"))?;
     let bytes = B64.decode(cipher_b64).map_err(|e| format!("密文解码失败: {e}"))?;
+    if bytes.len() < ENC_NONCE_LEN {
+        return Err("密文长度不足（缺少 nonce）".to_string());
+    }
+    let (nonce_bytes, ciphertext) = bytes.split_at(ENC_NONCE_LEN);
+    let nonce = Nonce::from_slice(nonce_bytes);
     let plain = cipher
-        .decrypt(nonce, bytes.as_ref())
+        .decrypt(nonce, ciphertext)
         .map_err(|_| "密码解密失败（可能已损坏）".to_string())?;
     String::from_utf8(plain).map_err(|e| format!("密码编码失败: {e}"))
 }
 
 // ──────────────── settings 读写 ────────────────
 
+/// 统一打开数据库连接并启用 WAL 模式，降低与前端 tauri-plugin-sql 并发写时的锁竞争。
+fn open_db(path: &Path) -> Result<Connection, String> {
+    let conn = Connection::open(path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let _ = conn.execute("PRAGMA journal_mode=WAL", []);
+    let _ = conn.execute("PRAGMA busy_timeout=5000", []);
+    Ok(conn)
+}
+
 fn write_setting_string<R: Runtime>(app: &AppHandle<R>, key: &str, value: &str) -> Result<(), String> {
     let db_path = litenote_db_path(app).ok_or_else(|| "无法获取数据库路径".to_string())?;
-    let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let conn = open_db(&db_path)?;
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         rusqlite::params![key, value],
@@ -194,7 +210,7 @@ fn read_local_todos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<TodoItemSync>,
     if !db_path.exists() {
         return Ok(Vec::new());
     }
-    let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let conn = open_db(&db_path)?;
     let has_table = conn
         .query_row(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='todos' LIMIT 1",
@@ -240,7 +256,7 @@ fn read_local_todos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<TodoItemSync>,
 /// 用远端数据覆盖本地（手动恢复）
 fn overwrite_local_todos<R: Runtime>(app: &AppHandle<R>, sync: &SyncFile) -> Result<(), String> {
     let db_path = litenote_db_path(app).ok_or_else(|| "无法获取数据库路径".to_string())?;
-    let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+    let conn = open_db(&db_path)?;
 
     // 清空并重新插入
     conn.execute("DELETE FROM todos", [])
@@ -320,26 +336,90 @@ fn get_config<R: Runtime>(
     Ok((url, user, pass, remote_path, enabled))
 }
 
-/// 上传本地 todos 到 WebDAV（单向）
-fn upload_to_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>) -> Result<(), String> {
-    let (url, user, pass, remote_path, _enabled) = get_config(app, ov)?;
+/// 本地与远端逐条合并（last-write-wins：以 update_time 较大者为准）。
+/// 任一端缺失的条目直接采用对端；同 id 冲突时取 update_time 更大的一方。
+fn merge_todos(local: Vec<TodoItemSync>, remote: Vec<TodoItemSync>) -> Vec<TodoItemSync> {
+    let mut map: std::collections::HashMap<String, TodoItemSync> = std::collections::HashMap::new();
+    for t in local {
+        map.insert(t.id.clone(), t);
+    }
+    for r in remote {
+        match map.get(&r.id) {
+            Some(l) if l.update_time >= r.update_time => { /* 本地更新更新，保留本地 */ }
+            _ => {
+                map.insert(r.id.clone(), r);
+            }
+        }
+    }
+    let mut merged: Vec<TodoItemSync> = map.into_values().collect();
+    merged.sort_by(|a, b| a.update_time.cmp(&b.update_time));
+    merged
+}
 
-    let todos = read_local_todos(app)?;
-    let sync_file = SyncFile {
-        version: 1,
-        updated_at: now_ms(),
-        todos,
-    };
-    let body = serde_json::to_string(&sync_file).map_err(|e| format!("序列化失败: {e}"))?;
+/// 双向同步：合并本地与远端，结果同时写回本地并上传云端。
+/// - 远端文件不存在（404）时，直接把本地上传。
+/// - 已存在时，逐条按 update_time 合并，避免多设备互相覆盖丢数据。
+fn sync_to_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>) -> Result<(), String> {
+    let (url, user, pass, remote_path, _enabled) = get_config(app, ov)?;
 
     let client = build_client()?;
     let auth = basic_auth_header(&user, &pass)?;
-
-    // 确保远端目录存在
-    ensure_remote_dir(&client, &url, &auth, &remote_path)?;
-
     let full = normalize_remote_url(&url, &remote_path);
-    eprintln!("[webdav] upload: PUT {}", full);
+
+    let local = read_local_todos(app)?;
+
+    // 尝试拉取远端
+    let remote_todos = match client
+        .get(&full)
+        .header(reqwest::header::AUTHORIZATION, auth.clone())
+        .send()
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let body = resp.text().map_err(|e| format!("读取响应失败: {e}"))?;
+            match serde_json::from_str::<SyncFile>(&body) {
+                Ok(sf) => {
+                    eprintln!("[webdav] sync: 拉取远端 {} 条", sf.todos.len());
+                    sf.todos
+                }
+                Err(e) => {
+                    eprintln!("[webdav] sync: 远端数据解析失败，视为空: {e}");
+                    Vec::new()
+                }
+            }
+        }
+        Ok(resp) if resp.status().as_u16() == 404 => {
+            eprintln!("[webdav] sync: 远端文件不存在，将直接上传本地");
+            Vec::new()
+        }
+        Ok(resp) => {
+            return Err(format!(
+                "下载失败，服务器返回 {} {}",
+                resp.status(),
+                resp.status()
+            ));
+        }
+        Err(e) => return Err(format!("下载请求失败: {e}")),
+    };
+
+    let merged = merge_todos(local, remote_todos);
+
+    // 写回本地（合并结果）
+    overwrite_local_todos(app, &SyncFile {
+        version: 1,
+        updated_at: now_ms(),
+        todos: merged.clone(),
+    })?;
+
+    // 上传合并结果到云端
+    ensure_remote_dir(&client, &url, &auth, &remote_path)?;
+    let body = serde_json::to_string(&SyncFile {
+        version: 1,
+        updated_at: now_ms(),
+        todos: merged,
+    })
+    .map_err(|e| format!("序列化失败: {e}"))?;
+
+    eprintln!("[webdav] sync: PUT {}", full);
     let resp = client
         .put(&full)
         .header(reqwest::header::AUTHORIZATION, auth.clone())
@@ -349,16 +429,16 @@ fn upload_to_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>)
         .map_err(|e| format!("上传请求失败: {e}"))?;
 
     if !resp.status().is_success() {
-        eprintln!("[webdav] upload: 失败状态码 {}", resp.status());
+        eprintln!("[webdav] sync: 失败状态码 {}", resp.status());
         return Err(format!("上传失败，服务器返回 {} {}", resp.status(), resp.status()));
     }
-    eprintln!("[webdav] upload: 成功");
+    eprintln!("[webdav] sync: 成功");
 
     set_last_sync(app, now_ms())?;
     Ok(())
 }
 
-/// 从 WebDAV 下载并覆盖本地（手动恢复）
+/// 从 WebDAV 下载并覆盖本地（手动恢复，危险操作，仅在用户确认后调用）
 fn download_from_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>) -> Result<(), String> {
     let (url, user, pass, remote_path, _enabled) = get_config(app, ov)?;
 
@@ -394,34 +474,22 @@ fn set_last_sync<R: Runtime>(app: &AppHandle<R>, ts: i64) -> Result<(), String> 
     Ok(())
 }
 
-/// 后台定时上传（仅 enabled 时）
+/// 后台定时双向同步（仅 enabled 时执行）
 fn sync_tick<R: Runtime>(app: &AppHandle<R>) {
-    let db_path = match litenote_db_path(app) {
-        Some(p) => p,
-        None => return,
-    };
-    if !db_path.exists() {
+    if !read_setting_bool_app(app, "webdavEnabled", false) {
         return;
     }
-    let enabled = read_setting_bool_app(app, "webdavEnabled", false);
-    if !enabled {
-        return;
+    if let Err(e) = sync_to_webdav(app, None) {
+        eprintln!("[LiteNote] WebDAV 后台同步失败: {e}");
     }
-    let handle = app.clone();
-    if let Err(e) = upload_to_webdav(&handle, None) {
-        eprintln!("[LiteNote] WebDAV 后台上传失败: {e}");
-        let _ = set_last_sync(&handle, now_ms());
-    } else {
-        println!("[LiteNote] WebDAV 后台上传成功");
-        let _ = set_last_sync(&handle, now_ms());
-    }
+    // set_last_sync 由 sync_to_webdav 内部在成功时调用
 }
 
-/// 启动 Rust 端后台同步轮询（仅在启用时执行一次上传）
+/// 启动 Rust 端后台同步轮询（异步运行时内循环，仅在启用时执行同步）
 pub fn start_webdav_sync_poll<R: Runtime>(app: &AppHandle<R>) {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        // 启动 10 秒后首次同步
+        // 启动 10 秒后首轮检查
         tokio::time::sleep(Duration::from_secs(10)).await;
 
         let mut interval = tokio::time::interval(Duration::from_secs(SYNC_POLL_INTERVAL_SECS));
@@ -429,6 +497,10 @@ pub fn start_webdav_sync_poll<R: Runtime>(app: &AppHandle<R>) {
 
         loop {
             interval.tick().await;
+            // 仅在启用时执行；禁用时空转跳过（无网络/IO 开销）
+            if !read_setting_bool_app(&handle, "webdavEnabled", false) {
+                continue;
+            }
             let handle = handle.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 sync_tick(&handle);
@@ -487,18 +559,17 @@ pub async fn webdav_set_config(app: AppHandle, config: WebdavConfigPayload) -> R
 pub async fn webdav_get_config(app: AppHandle) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db_path = litenote_db_path(&app).ok_or_else(|| "无法获取数据库路径".to_string())?;
-        let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+        let conn = open_db(&db_path)?;
         let enabled = read_setting_bool(&conn, "webdavEnabled", false);
         let url = read_setting_string(&conn, "webdavUrl", "");
         let user = read_setting_string(&conn, "webdavUser", "");
         let remote_path = read_setting_string(&conn, "webdavRemotePath", DEFAULT_REMOTE_PATH);
         let pass_enc = read_setting_string(&conn, "webdavPass", "");
-        let pass_set = !pass_enc.is_empty();
         // 解密容错：损坏的密文返回空，不阻断获取配置
-        let pass = if pass_set {
-            decrypt_secret(&pass_enc).unwrap_or_default()
-        } else {
+        let pass = if pass_enc.is_empty() {
             String::new()
+        } else {
+            decrypt_secret(&pass_enc).unwrap_or_default()
         };
         let last_sync: i64 = read_setting_string(&conn, "webdavLastSync", "0")
             .parse()
@@ -510,7 +581,6 @@ pub async fn webdav_get_config(app: AppHandle) -> Result<serde_json::Value, Stri
             "user": user,
             "remotePath": remote_path,
             "pass": pass,
-            "passSet": pass_set,
             "lastSync": last_sync,
         }))
     })
@@ -567,7 +637,8 @@ pub async fn webdav_test(app: AppHandle, payload: WebdavTestPayload) -> Result<S
     .map_err(|e| format!("后台任务失败: {e}"))?
 }
 
-/// 立即上传（单向同步到云端）。可传入当前输入框的临时配置覆盖已保存配置。
+/// 立即双向同步（合并本地与远端，结果同时写回本地并上传云端）。
+/// 可传入当前输入框的临时配置覆盖已保存配置。
 #[tauri::command]
 pub async fn webdav_sync_now(app: AppHandle, payload: Option<WebdavTestPayload>) -> Result<String, String> {
     let ov = payload.map(|p| ConfigOverride {
@@ -576,15 +647,9 @@ pub async fn webdav_sync_now(app: AppHandle, payload: Option<WebdavTestPayload>)
         pass: Some(p.pass),
         remote_path: p.remote_path,
     });
-    tauri::async_runtime::spawn_blocking(move || match upload_to_webdav(&app, ov.as_ref()) {
-        Ok(_) => {
-            let _ = set_last_sync(&app, now_ms());
-            Ok("同步成功".into())
-        }
-        Err(e) => {
-            let _ = set_last_sync(&app, now_ms());
-            Err(e)
-        }
+    tauri::async_runtime::spawn_blocking(move || match sync_to_webdav(&app, ov.as_ref()) {
+        Ok(_) => Ok("同步成功".into()),
+        Err(e) => Err(e),
     })
     .await
     .map_err(|e| format!("后台任务失败: {e}"))?
@@ -617,7 +682,7 @@ pub async fn webdav_restore(app: AppHandle, payload: Option<WebdavTestPayload>) 
 pub async fn webdav_status(app: AppHandle) -> Result<WebdavStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db_path = litenote_db_path(&app).ok_or_else(|| "无法获取数据库路径".to_string())?;
-        let conn = Connection::open(&db_path).map_err(|e| format!("打开 DB 失败: {e}"))?;
+        let conn = open_db(&db_path)?;
         let enabled = read_setting_bool(&conn, "webdavEnabled", false);
         let last_sync: i64 = read_setting_string(&conn, "webdavLastSync", "0")
             .parse()

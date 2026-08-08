@@ -98,7 +98,7 @@ export const messages = {
     syncPass: "密码",
     syncRemotePath: "远端文件路径",
     syncFreq: "同步频率",
-    syncFreqHint: "每 5 分钟自动上传云端",
+    syncFreqHint: "每 5 分钟自动双向同步",
     syncTest: "测试连接",
     syncNow: "立即同步",
     syncRestore: "从云端恢复",
@@ -109,7 +109,6 @@ export const messages = {
     syncStatusError: "同步失败：{msg}",
     syncTesting: "连接测试中…",
     syncSyncing: "同步中…",
-    syncPresets: "常用服务",
     syncPresetJianguoyun: "坚果云",
   },
   en: {
@@ -212,7 +211,7 @@ export const messages = {
     syncPass: "Password",
     syncRemotePath: "Remote file path",
     syncFreq: "Sync frequency",
-    syncFreqHint: "Auto-upload to cloud every 5 minutes",
+    syncFreqHint: "Auto two-way sync to cloud every 5 minutes",
     syncTest: "Test connection",
     syncNow: "Sync now",
     syncRestore: "Restore from cloud",
@@ -224,7 +223,6 @@ export const messages = {
     syncStatusError: "Sync failed: {msg}",
     syncTesting: "Testing connection…",
     syncSyncing: "Syncing…",
-    syncPresets: "Common services",
     syncPresetJianguoyun: "Jianguoyun",
   },
 } as const;

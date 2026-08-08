@@ -7,7 +7,6 @@ export interface WebdavConfig {
   remotePath: string;
   /** 解密后的明文密码（用于回填输入框） */
   pass?: string;
-  passSet: boolean;
   lastSync: number;
 }
 
