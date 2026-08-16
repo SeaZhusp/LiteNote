@@ -113,4 +113,10 @@
   --ln-theme-overlay: rgba(0, 0, 0, 0.1);
   --ln-scrollbar-thumb: rgba(100, 116, 139, 0.35);
   --ln-scrollbar-thumb-hover: rgba(100, 116, 139, 0.55);
+
+  /* 浅色主题下加深待办颜色，提高圆点 / 完成标记对比度 */
+  --ln-todo-p-none: #64748b;
+  --ln-todo-p-attention: #d97706;
+  --ln-todo-p-important: #ea580c;
+  --ln-todo-p-urgent: #dc2626;
 }

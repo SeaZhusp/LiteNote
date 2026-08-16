@@ -24,9 +24,9 @@ const REMIND_ADVANCE_MS: i64 = 15 * 60 * 1000;
 /// 背景提醒轮询间隔
 const REMINDER_POLL_INTERVAL_SECS: u64 = 30;
 
-/// 持久化窗口位置/大小/可见性（不含最大化，避免无边框窗口 resize 时死锁）
+/// 持久化窗口位置/大小（不含可见性，避免上次隐藏后被恢复成隐藏态导致「启动打不开」）
 fn window_persist_flags() -> StateFlags {
-    StateFlags::SIZE | StateFlags::POSITION | StateFlags::VISIBLE
+    StateFlags::SIZE | StateFlags::POSITION
 }
 
 pub(crate) const SETTINGS_UPDATED_EVENT: &str = "litenote-settings-updated";
@@ -707,7 +707,7 @@ fn reminder_action(
 fn hide_main_window(app: AppHandle) -> Result<(), String> {
     let flags = if read_focus_mode(&app) {
         // 专注模式不写 SIZE，避免下次完整模式恢复到矮窗口
-        StateFlags::POSITION | StateFlags::VISIBLE
+        StateFlags::POSITION
     } else {
         window_persist_flags()
     };
@@ -915,7 +915,7 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
             if visible {
                 // 隐藏前保存窗口状态（位置 + 大小；专注模式不写 SIZE）
                 let flags = if read_focus_mode(app) {
-                    StateFlags::POSITION | StateFlags::VISIBLE
+                    StateFlags::POSITION
                 } else {
                     window_persist_flags()
                 };
@@ -1049,6 +1049,9 @@ pub fn run() {
             if let Err(e) = register_all_shortcuts(app.handle()) {
                 eprintln!("[LiteNote] 全局快捷键注册失败: {e}");
             }
+
+            // 启动后强制显示主窗口，避免 window-state 或上次隐藏导致「启动打不开」
+            show_main_window(app.handle());
 
             Ok(())
         })

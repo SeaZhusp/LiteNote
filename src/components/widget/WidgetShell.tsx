@@ -350,32 +350,36 @@ export function WidgetShell() {
             />
           ) : null}
 
-          <div
-            className="relative flex items-stretch select-none"
-            style={{ borderBottom: "1px solid var(--ln-theme-border)" }}
-          >
-            {(["active", "completed"] as const).map((view) => {
-              const active = todoView === view;
-              return (
-                <button
-                  key={view}
-                  type="button"
-                  onClick={() => setTodoView(view)}
-                  className="flex-1 px-2 py-0.5 text-[9px] font-normal transition-colors"
-                  style={{
-                    color: active
-                      ? "var(--ln-theme-text)"
-                      : "var(--ln-theme-text-secondary)",
-                    borderBottom: active
-                      ? "2px solid var(--ln-theme-accent)"
-                      : "2px solid transparent",
-                    marginBottom: "-1px",
-                  }}
-                >
-                  {t(locale, view === "active" ? "viewActive" : "viewCompleted")}
-                </button>
-              );
-            })}
+          <div className="flex px-2 py-1 select-none">
+            <div
+              className="flex w-full items-center gap-0.5 p-0.5"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                borderRadius: "5px",
+              }}
+            >
+              {(["active", "completed"] as const).map((view) => {
+                const active = todoView === view;
+                return (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setTodoView(view)}
+                    className="flex-1 px-1.5 py-0 text-[9px] transition-colors"
+                    style={{
+                      color: active
+                        ? "var(--ln-theme-text)"
+                        : "var(--ln-theme-text-secondary)",
+                      fontWeight: active ? 700 : 400,
+                      background: "transparent",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {t(locale, view === "active" ? "viewActive" : "viewCompleted")}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <TodoList

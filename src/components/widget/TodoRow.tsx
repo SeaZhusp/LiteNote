@@ -305,12 +305,12 @@ function ManagementTodoRow({
             {(todo.pinned || dueLabel || recurrenceLabel) ? (
               <div className="mt-0.5 flex items-center gap-1.5">
                 {todo.pinned ? (
-                  <span className="text-xs text-sky-200/80">
+                  <span className="text-xs" style={{ color: "var(--ln-theme-text-secondary)" }}>
                     ↑ {locale === "zh-CN" ? "置顶" : "Pinned"}
                   </span>
                 ) : null}
                 {recurrenceLabel ? (
-                  <span className="text-xs text-emerald-300/80">
+                  <span className="text-xs" style={{ color: "var(--ln-theme-text-secondary)" }}>
                     ↻ {recurrenceLabel}
                   </span>
                 ) : null}

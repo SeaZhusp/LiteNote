@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import type { Locale } from "@/i18n";
 import { t } from "@/i18n";
 import type { MessageKey } from "@/i18n/messages";
-import { todayEnd, tomorrowEnd, weekendEnd } from "@/lib/dueDate";
 
 interface DatePickerProps {
   locale: Locale;
@@ -144,27 +143,6 @@ export function DatePicker({
     }
   };
 
-  const quickBtn = (key: MessageKey, ts: number) => (
-    <button
-      type="button"
-      className="flex-1 rounded-md border px-2 py-1 text-xs transition"
-      style={{
-        borderColor: "var(--ln-theme-border)",
-        color: "var(--ln-theme-text-secondary)",
-        background: "var(--ln-theme-surface)",
-      }}
-      onClick={() => {
-        setSelectedTs(startOfDay(ts));
-        if (showTime) {
-          setHours(23);
-          setMinutes(59);
-        }
-      }}
-    >
-      {t(locale, key)}
-    </button>
-  );
-
   return (
     <div
       className="fixed inset-0 z-[170] flex items-center justify-center"
@@ -254,13 +232,6 @@ export function DatePicker({
               </button>
             );
           })}
-        </div>
-
-        {/* 快捷按钮 */}
-        <div className="mt-3 flex gap-1.5">
-          {quickBtn("dueToday", todayEnd())}
-          {quickBtn("dueTomorrow", tomorrowEnd())}
-          {quickBtn("dueWeekend", weekendEnd())}
         </div>
 
         {/* 时间选择 */}
