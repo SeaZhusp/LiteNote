@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Locale } from "@/i18n";
 import { t } from "@/i18n";
-import type { MessageKey } from "@/i18n/messages";
 
 interface DatePickerProps {
   locale: Locale;
