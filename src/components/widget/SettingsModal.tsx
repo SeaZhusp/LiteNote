@@ -525,6 +525,7 @@ function SyncSettings({ locale }: { locale: Locale }) {
   };
 
   const onSync = async () => {
+    if (!window.confirm(mk("syncNowConfirm"))) return;
     setBusy("sync");
     setStatus(mk("syncSyncing"));
     try {

@@ -31,6 +31,8 @@ interface TodoListProps {
   onChangeText: (id: string, text: string) => void;
   onEndEdit: () => void;
   onToggleCompleted: (id: string) => void;
+  /** hover 删除图标点击后请求删除（需二次确认） */
+  onRequestDelete: (id: string) => void;
 }
 
 export function TodoList({
@@ -47,6 +49,7 @@ export function TodoList({
   onChangeText,
   onEndEdit,
   onToggleCompleted,
+  onRequestDelete,
 }: TodoListProps) {
   const { activeSorted, completedSorted, activeIds, completedBuckets } = useMemo(() => {
     const active = todos.filter((x) => !x.completed);
@@ -90,6 +93,7 @@ export function TodoList({
         onChangeText={(text) => onChangeText(todo.id, text)}
         onEndEdit={onEndEdit}
         onToggleCompleted={() => onToggleCompleted(todo.id)}
+        onRequestDelete={() => onRequestDelete(todo.id)}
       />
     ));
 

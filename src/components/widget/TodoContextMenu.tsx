@@ -32,7 +32,6 @@ interface TodoContextMenuProps {
   isRecurring: boolean;
   onClose: () => void;
   onPin: () => void;
-  onDelete: () => void;
   onToggleDone: () => void;
   onPickColor: (c: TodoColorId) => void;
   onPickDueDate: (ts: number) => void;
@@ -53,7 +52,6 @@ export function TodoContextMenu({
   isRecurring,
   onClose,
   onPin,
-  onDelete,
   onToggleDone,
   onPickColor,
   onPickDueDate,
@@ -245,9 +243,6 @@ export function TodoContextMenu({
       <div className="border-t border-neutral-100">
         <button type="button" className={item} role="menuitem" onClick={() => { onCopyTo(); onClose(); }}>
           {mk("menuCopyTo")}
-        </button>
-        <button type="button" className={item} role="menuitem" onClick={() => { onDelete(); onClose(); }}>
-          {mk("menuDelete")}
         </button>
         {!isRecurring || !completed ? (
           <button type="button" className={item} role="menuitem" onClick={() => { onToggleDone(); onClose(); }}>

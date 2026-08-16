@@ -360,9 +360,50 @@ fn merge_todos(local: Vec<TodoItemSync>, remote: Vec<TodoItemSync>) -> Vec<TodoI
     merged
 }
 
+/// 立即同步：本地强制覆盖云端（单向上传，本地 → 云端）。
+/// - 不拉取远端、不参与合并，直接把本地全量数据 PUT 覆盖云端文件。
+/// - 适合「以本机为准」的场景：本机改动只需推送到云端，云端若存在旧数据将被覆盖。
+fn upload_to_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>) -> Result<(), String> {
+    let (url, user, pass, remote_path, _enabled) = get_config(app, ov)?;
+
+    let client = build_client()?;
+    let auth = basic_auth_header(&user, &pass)?;
+    let full = normalize_remote_url(&url, &remote_path);
+
+    let local = read_local_todos(app)?;
+
+    // 上传本地全量数据，直接覆盖云端
+    ensure_remote_dir(&client, &url, &auth, &remote_path)?;
+    let body = serde_json::to_string(&SyncFile {
+        version: 1,
+        updated_at: now_ms(),
+        todos: local,
+    })
+    .map_err(|e| format!("序列化失败: {e}"))?;
+
+    eprintln!("[webdav] upload: PUT {} (本地强制覆盖云端)", full);
+    let resp = client
+        .put(&full)
+        .header(reqwest::header::AUTHORIZATION, auth.clone())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .map_err(|e| format!("上传请求失败: {e}"))?;
+
+    if !resp.status().is_success() {
+        eprintln!("[webdav] upload: 失败状态码 {}", resp.status());
+        return Err(format!("上传失败，服务器返回 {} {}", resp.status(), resp.status()));
+    }
+    eprintln!("[webdav] upload: 成功");
+
+    set_last_sync(app, now_ms())?;
+    Ok(())
+}
+
 /// 双向同步：合并本地与远端，结果同时写回本地并上传云端。
 /// - 远端文件不存在（404）时，直接把本地上传。
 /// - 已存在时，逐条按 update_time 合并，避免多设备互相覆盖丢数据。
+/// - 用于后台定时同步，保证多设备数据互通。
 fn sync_to_webdav<R: Runtime>(app: &AppHandle<R>, ov: Option<&ConfigOverride>) -> Result<(), String> {
     let (url, user, pass, remote_path, _enabled) = get_config(app, ov)?;
 
@@ -641,7 +682,7 @@ pub async fn webdav_test(app: AppHandle, payload: WebdavTestPayload) -> Result<S
     .map_err(|e| format!("后台任务失败: {e}"))?
 }
 
-/// 立即双向同步（合并本地与远端，结果同时写回本地并上传云端）。
+/// 立即同步（本地强制覆盖云端，单向上传）。
 /// 可传入当前输入框的临时配置覆盖已保存配置。
 #[tauri::command]
 pub async fn webdav_sync_now(app: AppHandle, payload: Option<WebdavTestPayload>) -> Result<String, String> {
@@ -651,8 +692,8 @@ pub async fn webdav_sync_now(app: AppHandle, payload: Option<WebdavTestPayload>)
         pass: Some(p.pass),
         remote_path: p.remote_path,
     });
-    tauri::async_runtime::spawn_blocking(move || match sync_to_webdav(&app, ov.as_ref()) {
-        Ok(_) => Ok("同步成功".into()),
+    tauri::async_runtime::spawn_blocking(move || match upload_to_webdav(&app, ov.as_ref()) {
+        Ok(_) => Ok("已覆盖云端".into()),
         Err(e) => Err(e),
     })
     .await

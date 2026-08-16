@@ -312,6 +312,7 @@ export function WidgetShell() {
               onChangeText={noopChangeText}
               onEndEdit={noop}
               onToggleCompleted={toggleCompleted}
+              onRequestDelete={noop}
             />
           </div>
         </div>
@@ -400,6 +401,7 @@ export function WidgetShell() {
             onChangeText={updateTodoText}
             onEndEdit={handleEndEdit}
             onToggleCompleted={toggleCompleted}
+            onRequestDelete={(id) => setConfirmDeleteId(id)}
           />
 
           {/* 拖拽预览：显示待办内容 */}
@@ -463,7 +465,6 @@ export function WidgetShell() {
           isRecurring={menuTodo.isRecurring}
           onClose={() => setMenu(null)}
           onPin={menuActions.onPin}
-          onDelete={menuActions.onDelete}
           onToggleDone={menuActions.onToggleDone}
           onPickColor={(c: TodoColorId) => menuActions.onPickColor(c)}
           onPickDueDate={menuActions.onPickDueDate}

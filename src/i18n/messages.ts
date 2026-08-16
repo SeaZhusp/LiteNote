@@ -111,6 +111,7 @@ export const messages = {
     syncFreqHint: "每 5 分钟自动双向同步",
     syncTest: "测试连接",
     syncNow: "立即同步",
+    syncNowConfirm: "将以本机数据强制覆盖云端，云端已有的旧数据将被覆盖，此操作不可撤销，确定继续？",
     syncRestore: "从云端恢复",
     syncRestoreConfirm: "将从云端下载并覆盖本机所有待办，此操作不可撤销，确定继续？",
     syncLast: "上次同步：",
@@ -234,6 +235,8 @@ export const messages = {
     syncFreqHint: "Auto two-way sync to cloud every 5 minutes",
     syncTest: "Test connection",
     syncNow: "Sync now",
+    syncNowConfirm:
+      "This will overwrite the cloud with your local data. Existing cloud data will be replaced. Cannot be undone. Continue?",
     syncRestore: "Restore from cloud",
     syncRestoreConfirm:
       "This will download from the cloud and overwrite ALL local todos. Cannot be undone. Continue?",

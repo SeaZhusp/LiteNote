@@ -41,7 +41,7 @@ export async function webdavTest(cfg: {
   return await invoke<string>("webdav_test", { payload: cfg });
 }
 
-/** 立即单向上传（本地 → 云端）。可传入当前输入框的临时配置，成功返回提示文本，失败抛错。 */
+/** 立即同步（本地强制覆盖云端，单向上传）。可传入当前输入框的临时配置，成功返回提示文本，失败抛错。 */
 export async function webdavSyncNow(cfg: {
   url: string;
   user: string;

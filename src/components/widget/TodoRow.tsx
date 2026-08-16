@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useSettingsStore } from "@/stores/settingsStore";
 import type { Locale } from "@/i18n";
 import { t } from "@/i18n";
 import { COLOR_DOT_STYLE } from "@/lib/itemColors";
@@ -21,6 +22,8 @@ interface TodoRowProps {
   onChangeText: (text: string) => void;
   onEndEdit: () => void;
   onToggleCompleted: () => void;
+  /** hover 行时显示删除图标，点击后请求删除（需二次确认） */
+  onRequestDelete: () => void;
 }
 
 export function TodoRow(props: TodoRowProps) {
@@ -116,8 +119,11 @@ function ManagementTodoRow({
   onChangeText,
   onEndEdit,
   onToggleCompleted,
+  onRequestDelete,
 }: Omit<TodoRowProps, "focusMode">) {
   const accent = COLOR_DOT_STYLE[todo.colorId].background;
+  const theme = useSettingsStore((s) => s.theme);
+  const trashColor = theme === "light" ? "#000000" : "#e2e8f0";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 仅未完成且非编辑态的待办可拖拽
@@ -185,7 +191,7 @@ function ManagementTodoRow({
         onContextMenu(e);
       }}
       className={
-        "flex min-h-12 cursor-default items-center gap-1 px-2 touch-none sm:px-3 " +
+        "group flex min-h-12 cursor-default items-center gap-1 px-2 touch-none sm:px-3 " +
         (sortable.isDragging ? "opacity-0" : "") +
         (!selected ? " hover:bg-[var(--ln-theme-surface-hover)]" : "")
       }
@@ -326,6 +332,48 @@ function ManagementTodoRow({
           </div>
         )}
       </button>
+      <button
+        type="button"
+        data-tauri-no-drag
+        aria-label={locale === "zh-CN" ? "删除待办" : "Delete todo"}
+        title={locale === "zh-CN" ? "删除待办" : "Delete todo"}
+        className={
+          "shrink-0 rounded-md p-1 opacity-0 " +
+          "transition-all hover:bg-red-500/15 hover:!text-red-500 " +
+          "focus:opacity-100 focus:outline-none focus:bg-red-500/15 focus:!text-red-500 " +
+          "group-hover:opacity-100"
+        }
+        style={{ color: trashColor }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRequestDelete();
+        }}
+      >
+        <TrashIcon className="h-4 w-4" />
+      </button>
     </div>
+  );
+}
+
+/** 删除图标（hover 行时显示），颜色由父元素的 text-* 控制（跟随主题深浅） */
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
   );
 }
