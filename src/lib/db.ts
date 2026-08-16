@@ -16,6 +16,7 @@ export type ThemeId = "glass" | "dark" | "light";
 /** 所有设置项的默认值，作为唯一真实来源 */
 export const DEFAULT_SETTINGS = {
   clockCollapsed: true,
+  weekCalendarCollapsed: true,
   panelOpacity: 0.88,
   localeMode: "system" as LocaleMode,
   alwaysOnTop: false,
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS = {
 /** 设置项的运行时类型（非字面量） */
 export interface AppSettings {
   readonly clockCollapsed: boolean;
+  readonly weekCalendarCollapsed: boolean;
   readonly panelOpacity: number;
   readonly localeMode: LocaleMode;
   readonly alwaysOnTop: boolean;
@@ -89,6 +91,7 @@ const EXPECTED_TODO_COLUMNS: Array<{ name: string; def: string }> = [
   { name: "color_id",     def: "TEXT NOT NULL DEFAULT 'none'" },
   { name: "pinned",       def: "INTEGER NOT NULL DEFAULT 0" },
   { name: "completed",    def: "INTEGER NOT NULL DEFAULT 0" },
+  { name: "completed_time", def: "INTEGER NOT NULL DEFAULT 0" },
   { name: "sort_order",   def: "INTEGER NOT NULL DEFAULT 0" },
   { name: "create_time",  def: "INTEGER NOT NULL DEFAULT 0" },
   { name: "update_time",  def: "INTEGER NOT NULL DEFAULT 0" },
@@ -108,6 +111,7 @@ async function initTables(db: Database): Promise<void> {
       color_id    TEXT NOT NULL DEFAULT 'none',
       pinned      INTEGER NOT NULL DEFAULT 0,
       completed   INTEGER NOT NULL DEFAULT 0,
+      completed_time INTEGER NOT NULL DEFAULT 0,
       sort_order  INTEGER NOT NULL DEFAULT 0,
       create_time INTEGER NOT NULL DEFAULT 0,
       update_time INTEGER NOT NULL DEFAULT 0
@@ -158,6 +162,7 @@ export async function loadTodos(): Promise<TodoItem[]> {
       color_id: string;
       pinned: number;
       completed: number;
+      completed_time: number;
       sort_order: number;
       create_time: number;
       update_time: number;
@@ -174,6 +179,7 @@ export async function loadTodos(): Promise<TodoItem[]> {
     colorId: r.color_id as TodoItem["colorId"],
     pinned: !!r.pinned,
     completed: !!r.completed,
+    completedTime: r.completed_time ?? 0,
     sortOrder: r.sort_order,
     createTime: r.create_time,
     updateTime: r.update_time,
@@ -188,14 +194,15 @@ export async function loadTodos(): Promise<TodoItem[]> {
 export async function insertTodo(item: TodoItem): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO todos (id,text,color_id,pinned,completed,sort_order,create_time,update_time,due_date,reminded,is_recurring,recurrence_type,recurrence_config)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    `INSERT INTO todos (id,text,color_id,pinned,completed,completed_time,sort_order,create_time,update_time,due_date,reminded,is_recurring,recurrence_type,recurrence_config)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       item.id,
       item.text,
       item.colorId,
       item.pinned ? 1 : 0,
       item.completed ? 1 : 0,
+      item.completedTime,
       item.sortOrder,
       item.createTime,
       item.updateTime,
@@ -211,13 +218,14 @@ export async function insertTodo(item: TodoItem): Promise<void> {
 export async function updateTodo(item: TodoItem): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `UPDATE todos SET text=$2,color_id=$3,pinned=$4,completed=$5,sort_order=$6,update_time=$7,due_date=$8,reminded=$9,is_recurring=$10,recurrence_type=$11,recurrence_config=$12 WHERE id=$1`,
+    `UPDATE todos SET text=$2,color_id=$3,pinned=$4,completed=$5,completed_time=$6,sort_order=$7,update_time=$8,due_date=$9,reminded=$10,is_recurring=$11,recurrence_type=$12,recurrence_config=$13 WHERE id=$1`,
     [
       item.id,
       item.text,
       item.colorId,
       item.pinned ? 1 : 0,
       item.completed ? 1 : 0,
+      item.completedTime,
       item.sortOrder,
       item.updateTime,
       item.dueDate,

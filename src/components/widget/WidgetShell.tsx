@@ -56,6 +56,8 @@ export function WidgetShell() {
   const setLocaleMode = useSettingsStore((s) => s.setLocaleMode);
   const clockCollapsed = useSettingsStore((s) => s.clockCollapsed);
   const setClockCollapsed = useSettingsStore((s) => s.setClockCollapsed);
+  const weekCalendarCollapsed = useSettingsStore((s) => s.weekCalendarCollapsed);
+  const setWeekCalendarCollapsed = useSettingsStore((s) => s.setWeekCalendarCollapsed);
   const autoStart = useSettingsStore((s) => s.autoStart);
   const setAutoStart = useSettingsStore((s) => s.setAutoStart);
   const theme = useSettingsStore((s) => s.theme);
@@ -75,6 +77,8 @@ export function WidgetShell() {
 
   // 周日历选中日期（null 表示不筛选）
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
+  // 待办视图筛选：进行中 / 已完成
+  const [todoView, setTodoView] = useState<"active" | "completed">("active");
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
@@ -337,16 +341,47 @@ export function WidgetShell() {
         >
           {!clockCollapsed ? <ClockSection locale={locale} /> : null}
 
-          <WeekCalendar
-            locale={locale}
-            todos={todos}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-          />
+          {!weekCalendarCollapsed ? (
+            <WeekCalendar
+              locale={locale}
+              todos={todos}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+          ) : null}
+
+          <div
+            className="relative flex items-stretch select-none"
+            style={{ borderBottom: "1px solid var(--ln-theme-border)" }}
+          >
+            {(["active", "completed"] as const).map((view) => {
+              const active = todoView === view;
+              return (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setTodoView(view)}
+                  className="flex-1 px-2 py-0.5 text-[9px] font-normal transition-colors"
+                  style={{
+                    color: active
+                      ? "var(--ln-theme-text)"
+                      : "var(--ln-theme-text-secondary)",
+                    borderBottom: active
+                      ? "2px solid var(--ln-theme-accent)"
+                      : "2px solid transparent",
+                    marginBottom: "-1px",
+                  }}
+                >
+                  {t(locale, view === "active" ? "viewActive" : "viewCompleted")}
+                </button>
+              );
+            })}
+          </div>
 
           <TodoList
             locale={locale}
             todos={filteredTodos}
+            todoView={todoView}
             selectedId={selectedId}
             editingId={editingId}
             emptyHint={
@@ -392,6 +427,8 @@ export function WidgetShell() {
           onPanelOpacityChange={setPanelOpacity}
           clockCollapsed={clockCollapsed}
           onSetClockCollapsed={setClockCollapsed}
+          weekCalendarCollapsed={weekCalendarCollapsed}
+          onSetWeekCalendarCollapsed={setWeekCalendarCollapsed}
           autoStart={autoStart}
           onSetAutoStart={setAutoStart}
           theme={theme}

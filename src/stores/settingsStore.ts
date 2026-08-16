@@ -12,6 +12,7 @@ import {
 
 export interface SettingsState {
   clockCollapsed: boolean;
+  weekCalendarCollapsed: boolean;
   panelOpacity: number;
   localeMode: LocaleMode;
   alwaysOnTop: boolean;
@@ -34,6 +35,7 @@ export interface SettingsActions {
   setPanelOpacity: (v: number) => void;
   setLocaleMode: (m: LocaleMode) => void;
   setClockCollapsed: (v: boolean) => void;
+  setWeekCalendarCollapsed: (v: boolean) => void;
   setAlwaysOnTop: (v: boolean) => void;
   setAutoStart: (v: boolean) => void;
   setTheme: (t: ThemeId) => void;
@@ -129,6 +131,16 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       dbWrite(
         saveSetting("clockCollapsed", v),
         "saveSetting(clockCollapsed)",
+        (msg) => set({ lastError: msg }),
+        emitSettingsChanged,
+      );
+    },
+
+    setWeekCalendarCollapsed: (v) => {
+      set({ weekCalendarCollapsed: v });
+      dbWrite(
+        saveSetting("weekCalendarCollapsed", v),
+        "saveSetting(weekCalendarCollapsed)",
         (msg) => set({ lastError: msg }),
         emitSettingsChanged,
       );

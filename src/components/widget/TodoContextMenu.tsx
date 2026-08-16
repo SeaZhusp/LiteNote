@@ -249,9 +249,13 @@ export function TodoContextMenu({
         <button type="button" className={item} role="menuitem" onClick={() => { onDelete(); onClose(); }}>
           {mk("menuDelete")}
         </button>
-        {!isRecurring ? (
+        {!isRecurring || !completed ? (
           <button type="button" className={item} role="menuitem" onClick={() => { onToggleDone(); onClose(); }}>
-            {completed ? mk("menuUndone") : mk("menuDone")}
+            {completed
+              ? mk("menuUndone")
+              : isRecurring
+                ? mk("menuDoneCycle")
+                : mk("menuDone")}
           </button>
         ) : null}
       </div>

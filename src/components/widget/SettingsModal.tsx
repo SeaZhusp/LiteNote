@@ -16,6 +16,8 @@ interface SettingsModalProps {
   onPanelOpacityChange: (v: number) => void;
   clockCollapsed: boolean;
   onSetClockCollapsed: (v: boolean) => void;
+  weekCalendarCollapsed: boolean;
+  onSetWeekCalendarCollapsed: (v: boolean) => void;
   autoStart: boolean;
   onSetAutoStart: (v: boolean) => void;
   theme: ThemeId;
@@ -710,6 +712,8 @@ export function SettingsModal({
   onPanelOpacityChange,
   clockCollapsed,
   onSetClockCollapsed,
+  weekCalendarCollapsed,
+  onSetWeekCalendarCollapsed,
   autoStart,
   onSetAutoStart,
   theme,
@@ -841,6 +845,11 @@ export function SettingsModal({
             checked={!clockCollapsed}
             onChange={(v) => onSetClockCollapsed(!v)}
             label={mk("showClockSection")}
+          />
+          <Switch
+            checked={!weekCalendarCollapsed}
+            onChange={(v) => onSetWeekCalendarCollapsed(!v)}
+            label={mk("showWeekCalendarSection")}
           />
           <Switch
             checked={autoStart}

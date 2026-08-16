@@ -34,7 +34,7 @@ export function generateExportContent(
   // 已完成（按完成时间倒序）
   const completed = todos
     .filter((t) => t.completed)
-    .sort((a, b) => b.updateTime - a.updateTime);
+    .sort((a, b) => b.completedTime - a.completedTime);
 
   const contentLabel = isZh ? "内容" : "Content";
   const dueDateLabel = isZh ? "截止时间" : "Due date";
@@ -63,7 +63,7 @@ export function generateExportContent(
     lines.push("");
     for (const todo of completed) {
       lines.push(`${contentLabel}：${todo.text || (isZh ? "（空）" : "(empty)")}`);
-      lines.push(`${completedTimeLabel}：${formatTime(todo.updateTime)}`);
+      lines.push(`${completedTimeLabel}：${formatTime(todo.completedTime)}`);
       lines.push("");
     }
   }

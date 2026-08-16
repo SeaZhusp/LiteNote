@@ -60,6 +60,8 @@ struct TodoItemSync {
     update_time: i64,
     #[serde(default)]
     create_time: i64,
+    #[serde(default)]
+    completed_time: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -225,7 +227,7 @@ fn read_local_todos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<TodoItemSync>,
     let mut stmt = conn
         .prepare(
             "SELECT id, text, completed, pinned, color_id, due_date, reminded, \
-             is_recurring, recurrence_type, recurrence_config, update_time, create_time \
+             is_recurring, recurrence_type, recurrence_config, update_time, create_time, completed_time \
              FROM todos",
         )
         .map_err(|e| format!("查询待办失败: {e}"))?;
@@ -245,6 +247,7 @@ fn read_local_todos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<TodoItemSync>,
                 recurrence_config: row.get(9)?,
                 update_time: row.get(10)?,
                 create_time: row.get(11)?,
+                completed_time: row.get(12)?,
             })
         })
         .map_err(|e| format!("读取待办失败: {e}"))?;
@@ -265,14 +268,14 @@ fn overwrite_local_todos<R: Runtime>(app: &AppHandle<R>, sync: &SyncFile) -> Res
     for item in &sync.todos {
         conn.execute(
             "INSERT INTO todos \
-             (id, text, completed, pinned, color_id, due_date, reminded, is_recurring, recurrence_type, recurrence_config, update_time, create_time) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) \
+             (id, text, completed, pinned, color_id, due_date, reminded, is_recurring, recurrence_type, recurrence_config, update_time, create_time, completed_time) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) \
              ON CONFLICT(id) DO UPDATE SET \
              text=excluded.text, completed=excluded.completed, pinned=excluded.pinned, \
              color_id=excluded.color_id, due_date=excluded.due_date, reminded=excluded.reminded, \
              is_recurring=excluded.is_recurring, recurrence_type=excluded.recurrence_type, \
              recurrence_config=excluded.recurrence_config, update_time=excluded.update_time, \
-             create_time=excluded.create_time",
+             create_time=excluded.create_time, completed_time=excluded.completed_time",
             rusqlite::params![
                 item.id,
                 item.text,
@@ -286,6 +289,7 @@ fn overwrite_local_todos<R: Runtime>(app: &AppHandle<R>, sync: &SyncFile) -> Res
                 item.recurrence_config,
                 item.update_time,
                 item.create_time,
+                item.completed_time,
             ],
         )
         .map_err(|e| format!("写入待办失败: {e}"))?;

@@ -54,25 +54,29 @@ function FocusTodoRow({
       style={{ borderBottom: `1px solid var(--ln-theme-border-light)` }}
     >
       {todo.isRecurring ? (
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-xs"
-          title={locale === "zh-CN" ? "循环待办" : "Recurring"}
-          style={{ color: accent }}
+        <button
+          type="button"
+          data-tauri-no-drag
+          aria-label={t(locale, "menuDone")}
+          title={locale === "zh-CN" ? "完成本轮循环" : "Complete this cycle"}
+          className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-white/50"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCompleted();
+          }}
         >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <span
+            className="flex h-[0.875rem] w-[0.875rem] items-center justify-center rounded-full border bg-transparent"
+            style={{ borderColor: accent }}
+          />
+          {/* 循环角标 */}
+          <span
+            className="pointer-events-none absolute -right-0.5 -top-0.5 text-[0.55rem] leading-none"
+            style={{ color: accent }}
           >
-            <polyline points="1 4 1 10 7 10" />
-            <polyline points="23 20 23 14 17 14" />
-            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-          </svg>
-        </span>
+            ↻
+          </span>
+        </button>
       ) : (
         <button
           type="button"
@@ -191,27 +195,34 @@ function ManagementTodoRow({
         background: selected ? "var(--ln-theme-surface-active)" : "transparent",
       }}
     >
-      {/* 循环待办：显示循环图标，不可点击完成 */}
+      {/* 循环待办：显示可点击的完成按钮（带循环角标） */}
       {todo.isRecurring ? (
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-xs"
-          title={locale === "zh-CN" ? "循环待办" : "Recurring"}
-          style={{ color: accent }}
+        <button
+          type="button"
+          data-tauri-no-drag
+          aria-label={t(locale, "menuDone")}
+          title={locale === "zh-CN" ? "完成本轮循环" : "Complete this cycle"}
+          className={
+            "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full outline-none transition " +
+            "focus-visible:ring-2 focus-visible:ring-white/50"
+          }
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCompleted();
+          }}
         >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <span
+            className="flex h-[0.875rem] w-[0.875rem] items-center justify-center rounded-full border bg-transparent"
+            style={{ borderColor: accent }}
+          />
+          <span
+            className="pointer-events-none absolute -right-0.5 -top-0.5 text-[0.6rem] leading-none"
+            style={{ color: accent }}
           >
-            <polyline points="1 4 1 10 7 10" />
-            <polyline points="23 20 23 14 17 14" />
-            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-          </svg>
-        </span>
+            ↻
+          </span>
+        </button>
       ) : (
         <button
           type="button"

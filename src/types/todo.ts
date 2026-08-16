@@ -26,6 +26,8 @@ export interface TodoItem {
   colorId: TodoColorId;
   pinned: boolean;
   completed: boolean;
+  /** 完成时间戳（毫秒），0 表示未完成或无完成时间 */
+  completedTime: number;
   sortOrder: number;
   createTime: number;
   updateTime: number;

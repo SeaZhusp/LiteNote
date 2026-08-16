@@ -8,6 +8,7 @@ import {
   removeTodo,
   clearCompletedTodos as dbClearCompleted,
 } from "@/lib/db";
+import { computeNextDueDate } from "@/lib/recurrence";
 
 // ──────────────── 类型定义 ────────────────
 
@@ -106,6 +107,7 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         colorId: "none",
         pinned: false,
         completed: false,
+        completedTime: 0,
         sortOrder: nextOrder(get().todos),
         createTime: now,
         updateTime: now,
@@ -181,6 +183,62 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
     },
 
     toggleCompleted: (id) => {
+      const target = get().todos.find((x) => x.id === id);
+      if (!target) return;
+
+      // 循环待办：本体推进到下一轮，并在「已完成」下新增一条本轮完成记录
+      if (target.isRecurring && !target.completed) {
+        const now = Date.now();
+        const nextDue = computeNextDueDate(
+          target.dueDate,
+          target.recurrenceType,
+          target.recurrenceConfig,
+        );
+
+        const recordId = crypto.randomUUID();
+        const record: TodoItem = {
+          ...target,
+          id: recordId,
+          completed: true,
+          completedTime: now,
+          dueDate: target.dueDate, // 记录本轮截止时间
+          isRecurring: false, // 完成记录不再循环
+          recurrenceType: "none",
+          recurrenceConfig: "",
+          pinned: false,
+          reminded: true,
+          sortOrder: nextOrder(get().todos),
+          createTime: target.createTime,
+          updateTime: now,
+        };
+
+        const advanced: TodoItem = {
+          ...target,
+          // 本体保持未完成、继续循环，仅滚动到下一轮
+          dueDate: nextDue,
+          reminded: false,
+          updateTime: now,
+        };
+
+        set((s) => ({ todos: [...s.todos, record] }));
+        set((s) => ({
+          todos: s.todos.map((x) => (x.id === id ? advanced : x)),
+        }));
+
+        dbWrite(
+          insertTodo(record),
+          "completeRecurring(record)",
+          (msg) => set({ lastError: msg }),
+        );
+        dbWrite(
+          updateTodo(advanced),
+          "completeRecurring(advance)",
+          (msg) => set({ lastError: msg }),
+        );
+        return;
+      }
+
+      // 非循环待办 / 取消已完成：沿用原有逻辑
       const now = Date.now();
       let updated!: TodoItem;
       set((s) => ({
@@ -190,6 +248,8 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
           return ((updated = {
             ...x,
             completed: nextCompleted,
+            // 完成时记录完成时间；取消完成时清零
+            completedTime: nextCompleted ? now : 0,
             pinned: nextCompleted ? false : x.pinned,
             updateTime: now,
           }),
@@ -350,6 +410,7 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         colorId: original.colorId,
         pinned: false,
         completed: false,
+        completedTime: 0,
         sortOrder: original.sortOrder + 0.5,
         createTime: now,
         updateTime: now,
