@@ -140,6 +140,8 @@ export function WidgetShell() {
     dueDatePickerFor,
     recurrencePicker,
     copyToPickerFor,
+    openNoteForId,
+    setOpenNoteForId,
     setMenu,
     setConfirmClear,
     setConfirmDeleteId,
@@ -404,6 +406,8 @@ export function WidgetShell() {
             onEndEdit={handleEndEdit}
             onToggleCompleted={toggleCompleted}
             onRequestDelete={(id) => setConfirmDeleteId(id)}
+            openNoteForId={openNoteForId}
+            onOpenNote={setOpenNoteForId}
           />
 
           {/* 拖拽预览：显示待办内容 */}
@@ -477,6 +481,7 @@ export function WidgetShell() {
           onSetRecurrence={menuActions.onSetRecurrence}
           onClearRecurrence={menuActions.onClearRecurrence}
           onCopyTo={menuActions.onCopyTo}
+          onOpenNote={menuActions.onOpenNote}
         />
       ) : null}
 

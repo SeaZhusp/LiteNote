@@ -103,6 +103,8 @@ const EXPECTED_TODO_COLUMNS: Array<{ name: string; def: string }> = [
   { name: "is_recurring", def: "INTEGER NOT NULL DEFAULT 0" },
   { name: "recurrence_type", def: "TEXT NOT NULL DEFAULT 'none'" },
   { name: "recurrence_config", def: "TEXT NOT NULL DEFAULT ''" },
+  { name: "note", def: "TEXT NOT NULL DEFAULT ''" },
+  { name: "progress", def: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 async function initTables(db: Database): Promise<void> {
@@ -117,7 +119,9 @@ async function initTables(db: Database): Promise<void> {
       completed_time INTEGER NOT NULL DEFAULT 0,
       sort_order  INTEGER NOT NULL DEFAULT 0,
       create_time INTEGER NOT NULL DEFAULT 0,
-      update_time INTEGER NOT NULL DEFAULT 0
+      update_time INTEGER NOT NULL DEFAULT 0,
+      note        TEXT NOT NULL DEFAULT '',
+      progress    INTEGER NOT NULL DEFAULT 0
     )
   `);
 
@@ -174,6 +178,8 @@ export async function loadTodos(): Promise<TodoItem[]> {
       is_recurring: number;
       recurrence_type: string;
       recurrence_config: string;
+      note: string;
+      progress: number;
     }>
   >("SELECT * FROM todos ORDER BY sort_order ASC, update_time DESC");
   return rows.map((r) => ({
@@ -191,14 +197,16 @@ export async function loadTodos(): Promise<TodoItem[]> {
     isRecurring: !!(r.is_recurring ?? 0),
     recurrenceType: (r.recurrence_type ?? "none") as TodoItem["recurrenceType"],
     recurrenceConfig: r.recurrence_config ?? "",
+    note: r.note ?? "",
+    progress: r.progress ?? 0,
   }));
 }
 
 export async function insertTodo(item: TodoItem): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO todos (id,text,color_id,pinned,completed,completed_time,sort_order,create_time,update_time,due_date,reminded,is_recurring,recurrence_type,recurrence_config)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    `INSERT INTO todos (id,text,color_id,pinned,completed,completed_time,sort_order,create_time,update_time,due_date,reminded,is_recurring,recurrence_type,recurrence_config,note,progress)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
       item.id,
       item.text,
@@ -214,6 +222,8 @@ export async function insertTodo(item: TodoItem): Promise<void> {
       item.isRecurring ? 1 : 0,
       item.recurrenceType,
       item.recurrenceConfig,
+      item.note,
+      item.progress,
     ],
   );
 }
@@ -221,7 +231,7 @@ export async function insertTodo(item: TodoItem): Promise<void> {
 export async function updateTodo(item: TodoItem): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `UPDATE todos SET text=$2,color_id=$3,pinned=$4,completed=$5,completed_time=$6,sort_order=$7,update_time=$8,due_date=$9,reminded=$10,is_recurring=$11,recurrence_type=$12,recurrence_config=$13 WHERE id=$1`,
+    `UPDATE todos SET text=$2,color_id=$3,pinned=$4,completed=$5,completed_time=$6,sort_order=$7,update_time=$8,due_date=$9,reminded=$10,is_recurring=$11,recurrence_type=$12,recurrence_config=$13,note=$14,progress=$15 WHERE id=$1`,
     [
       item.id,
       item.text,
@@ -236,6 +246,8 @@ export async function updateTodo(item: TodoItem): Promise<void> {
       item.isRecurring ? 1 : 0,
       item.recurrenceType,
       item.recurrenceConfig,
+      item.note,
+      item.progress,
     ],
   );
 }

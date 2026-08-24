@@ -33,6 +33,10 @@ interface TodoListProps {
   onToggleCompleted: (id: string) => void;
   /** hover 删除图标点击后请求删除（需二次确认） */
   onRequestDelete: (id: string) => void;
+  /** 由右键菜单触发的「备注与进度」气泡待办 id（null 表示无） */
+  openNoteForId?: string | null;
+  /** 关闭备注气泡时回调（用于清空触发源） */
+  onOpenNote?: (id: string) => void;
 }
 
 export function TodoList({
@@ -50,6 +54,8 @@ export function TodoList({
   onEndEdit,
   onToggleCompleted,
   onRequestDelete,
+  openNoteForId = null,
+  onOpenNote,
 }: TodoListProps) {
   const { activeSorted, completedSorted, activeIds, completedBuckets } = useMemo(() => {
     const active = todos.filter((x) => !x.completed);
@@ -94,6 +100,8 @@ export function TodoList({
         onEndEdit={onEndEdit}
         onToggleCompleted={() => onToggleCompleted(todo.id)}
         onRequestDelete={() => onRequestDelete(todo.id)}
+        openNoteForId={openNoteForId}
+        onOpenNote={onOpenNote}
       />
     ));
 

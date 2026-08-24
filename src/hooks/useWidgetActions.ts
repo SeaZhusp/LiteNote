@@ -39,6 +39,7 @@ export function useWidgetActions(locale: Locale) {
   const [dueDatePickerFor, setDueDatePickerFor] = useState<string | null>(null);
   const [recurrencePicker, setRecurrencePicker] = useState<RecurrencePickerState | null>(null);
   const [copyToPickerFor, setCopyToPickerFor] = useState<string | null>(null);
+  const [openNoteForId, setOpenNoteForId] = useState<string | null>(null);
 
   // ── 派生数据 ──
   const menuTodo = useMemo(
@@ -141,6 +142,12 @@ export function useWidgetActions(locale: Locale) {
         if (!menuTodo) return;
         setCopyToPickerFor(menuTodo.id);
       },
+      onOpenNote: () => {
+        if (!menuTodo) return;
+        // 关闭右键菜单，打开该待办的备注/进度气泡
+        setMenu(null);
+        setOpenNoteForId(menuTodo.id);
+      },
     }),
     [menuTodo, togglePinned, toggleCompleted, setTodoColor, setTodoDueDate, setTodoRecurrence],
   );
@@ -159,6 +166,8 @@ export function useWidgetActions(locale: Locale) {
     dueDatePickerFor,
     recurrencePicker,
     copyToPickerFor,
+    openNoteForId,
+    setOpenNoteForId,
     // 设置器
     setMenu,
     setConfirmClear,

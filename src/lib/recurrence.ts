@@ -121,6 +121,45 @@ function advanceMonthlyFallback(from: Date, interval: number): number {
 }
 
 /**
+ * 格式化循环规则为简短文本。
+ * 用于空间受限的场景（如待办行内的循环 tag），只展示循环类型，不展开具体日期。
+ */
+export function formatRecurrenceShort(
+  type: RecurrenceType,
+  config: string,
+  locale: "zh-CN" | "en",
+): string | null {
+  if (type === "none" || !config) return null;
+
+  let cfg: RecurrenceConfig;
+  try {
+    cfg = JSON.parse(config);
+  } catch {
+    return null;
+  }
+
+  const isZh = locale === "zh-CN";
+  const interval = cfg.interval || 1;
+
+  switch (type) {
+    case "daily":
+      return isZh
+        ? interval === 1 ? "每天" : `每${interval}天`
+        : interval === 1 ? "Daily" : `Every ${interval} days`;
+    case "weekly":
+      return isZh
+        ? interval === 1 ? "每周" : `每${interval}周`
+        : interval === 1 ? "Weekly" : `Every ${interval} weeks`;
+    case "monthly":
+      return isZh
+        ? interval === 1 ? "每月" : `每${interval}月`
+        : interval === 1 ? "Monthly" : `Every ${interval} months`;
+    default:
+      return null;
+  }
+}
+
+/**
  * 格式化循环规则为可读文本。
  * 用于 UI 显示。
  */

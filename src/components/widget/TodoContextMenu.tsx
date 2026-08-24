@@ -40,6 +40,7 @@ interface TodoContextMenuProps {
   onSetRecurrence: (type: RecurrenceType) => void;
   onClearRecurrence: () => void;
   onCopyTo: () => void;
+  onOpenNote: () => void;
 }
 
 export function TodoContextMenu({
@@ -60,6 +61,7 @@ export function TodoContextMenu({
   onSetRecurrence,
   onClearRecurrence,
   onCopyTo,
+  onOpenNote,
 }: TodoContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -96,6 +98,19 @@ export function TodoContextMenu({
       }}
       role="menu"
     >
+      <button
+        type="button"
+        className={item}
+        role="menuitem"
+        onClick={() => {
+          onOpenNote();
+          onClose();
+        }}
+      >
+        <span aria-hidden>📝</span>
+        {mk("menuNote")}
+      </button>
+
       {!completed ? (
         <button
           type="button"

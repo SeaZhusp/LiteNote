@@ -43,4 +43,8 @@ export interface TodoItem {
   recurrenceType: RecurrenceType;
   /** 循环规则 JSON 配置 */
   recurrenceConfig: string;
+  /** 备注文本，空串表示无 */
+  note: string;
+  /** 完成进度 0-100，0 表示不启用进度 */
+  progress: number;
 }

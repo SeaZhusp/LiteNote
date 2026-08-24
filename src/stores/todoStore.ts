@@ -35,6 +35,10 @@ export interface TodoStoreActions {
   toggleCompleted: (id: string) => void;
   setTodoColor: (id: string, colorId: TodoItem["colorId"]) => void;
   setTodoDueDate: (id: string, dueDate: number) => void;
+  /** 设置备注文本（空串表示无） */
+  setTodoNote: (id: string, note: string) => void;
+  /** 设置完成进度 0-100（0 表示不启用进度） */
+  setTodoProgress: (id: string, progress: number) => void;
   setTodoRecurrence: (
     id: string,
     isRecurring: boolean,
@@ -117,6 +121,8 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         isRecurring: false,
         recurrenceType: "none",
         recurrenceConfig: "",
+        note: "",
+        progress: 0,
       };
       set((s) => ({ todos: [...s.todos, item] }));
       dbWrite(
@@ -145,7 +151,7 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         ...item,
         text: parsed.cleanText,
         dueDate: parsed.matched ? parsed.dueDate : item.dueDate,
-        updateTime: Date.now(),
+        // 仅改文本/截止，不刷新 updateTime，避免触发按更新时间回退的重排
       };
       set((s) => ({
         todos: s.todos.map((x) => (x.id === id ? updated : x)),
@@ -278,12 +284,12 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
     },
 
     setTodoColor: (id, colorId) => {
-      const now = Date.now();
       let updated!: TodoItem;
       set((s) => ({
         todos: s.todos.map((x) =>
           x.id === id
-            ? ((updated = { ...x, colorId, updateTime: now }), updated)
+            ? // 仅改颜色，不刷新 updateTime，避免触发按更新时间回退的重排
+              ((updated = { ...x, colorId }), updated)
             : x,
         ),
       }));
@@ -297,7 +303,6 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
     },
 
     setTodoDueDate: (id, dueDate) => {
-      const now = Date.now();
       let updated!: TodoItem;
       set((s) => ({
         todos: s.todos.map((x) =>
@@ -305,7 +310,7 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
             ? ((updated = {
                 ...x,
                 dueDate,
-                updateTime: now,
+                // 仅改截止时间，不刷新 updateTime，避免触发按更新时间回退的重排
                 // 重新设置截止时间后，进入新一轮提醒窗口，清空 reminded
                 reminded: false,
               }), updated)
@@ -322,7 +327,6 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
     },
 
     setTodoRecurrence: (id, isRecurring, type, config) => {
-      const now = Date.now();
       let updated!: TodoItem;
       set((s) => ({
         todos: s.todos.map((x) =>
@@ -334,7 +338,7 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
                 recurrenceConfig: config,
                 // 设为循环时重置 reminded，确保新轮次能提醒
                 reminded: isRecurring ? false : x.reminded,
-                updateTime: now,
+                // 仅改循环规则，不刷新 updateTime，避免触发按更新时间回退的重排
               }),
               updated)
             : x,
@@ -344,6 +348,45 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         dbWrite(
           updateTodo(updated),
           "setTodoRecurrence",
+          (msg) => set({ lastError: msg }),
+        );
+      }
+    },
+
+    setTodoNote: (id, note) => {
+      let updated!: TodoItem;
+      set((s) => ({
+        todos: s.todos.map((x) =>
+          x.id === id
+            ? // 备注仅改内容，不刷新 updateTime，避免触发按更新时间回退的重排
+              ((updated = { ...x, note }), updated)
+            : x,
+        ),
+      }));
+      if (updated) {
+        dbWrite(
+          updateTodo(updated),
+          "setTodoNote",
+          (msg) => set({ lastError: msg }),
+        );
+      }
+    },
+
+    setTodoProgress: (id, progress) => {
+      const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+      let updated!: TodoItem;
+      set((s) => ({
+        todos: s.todos.map((x) =>
+          x.id === id
+            ? // 进度仅改数值，不刷新 updateTime，避免触发按更新时间回退的重排
+              ((updated = { ...x, progress: clamped }), updated)
+            : x,
+        ),
+      }));
+      if (updated) {
+        dbWrite(
+          updateTodo(updated),
+          "setTodoProgress",
           (msg) => set({ lastError: msg }),
         );
       }
@@ -431,6 +474,8 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
         isRecurring: false,
         recurrenceType: "none",
         recurrenceConfig: "",
+        note: original.note,
+        progress: original.progress,
       };
 
       // 插入到原条目后方，重排 sortOrder
