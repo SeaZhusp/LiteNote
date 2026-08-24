@@ -32,7 +32,7 @@ export function computeNextDueDate(
     case "weekly":
       return advanceWeekly(due, interval, cfg.days || []);
     case "monthly":
-      return advanceMonthly(due, interval, cfg.dayOfMonth);
+      return advanceMonthly(due, interval, cfg.daysOfMonth || (cfg.dayOfMonth != null ? [cfg.dayOfMonth] : []));
     default:
       return 0;
   }
@@ -70,28 +70,54 @@ function advanceWeekly(from: Date, interval: number, days: number[]): number {
   return next.getTime();
 }
 
-/** 每月：加 interval 月，保留原始时分秒，自动截断到月末 */
+/**
+ * 每月（多选日期）：在 daysOfMonth 列表中找下一个 >= 当前日期的日期；
+ * 若当前月无更大日期，则跨到下一周期（按 interval 个月）取列表最小值。
+ * 注意：本函数只在「当前 dueDate 已过期」时被调用，需正确滚动到下个命中日。
+ */
 function advanceMonthly(
   from: Date,
   interval: number,
-  dayOfMonth?: number,
+  daysOfMonth: number[],
 ): number {
-  const targetDay = dayOfMonth || from.getDate();
+  if (daysOfMonth.length === 0) {
+    // 未指定日期：退化为加 interval 个月，保留原始日
+    return advanceMonthlyFallback(from, interval);
+  }
 
-  // 手动计算目标年月，避免 JS setMonth 自动滚动问题
+  const sorted = [...daysOfMonth].sort((a, b) => a - b);
+  const currentDay = from.getDate();
+
+  // 先在「当前月」找下一个更大的日期
+  const nextDayThisMonth = sorted.find((d) => d > currentDay);
+  if (nextDayThisMonth !== undefined) {
+    const candidate = clampToMonth(from.getFullYear(), from.getMonth(), nextDayThisMonth, from);
+    if (candidate.getTime() > from.getTime()) return candidate.getTime();
+  }
+
+  // 当前月无更大日期 → 跨到下个周期月，取列表最小值
+  const base = new Date(from.getFullYear(), from.getMonth() + interval, 1, from.getHours(), from.getMinutes(), from.getSeconds(), from.getMilliseconds());
+  return clampToMonth(base.getFullYear(), base.getMonth(), sorted[0], from).getTime();
+}
+
+/** 月末截断：目标日超过当月天数则取最后一天，并保留原始时分秒 */
+function clampToMonth(y: number, m: number, day: number, src: Date): Date {
+  const maxDay = new Date(y, m + 1, 0).getDate();
+  const d = Math.min(Math.max(1, day), maxDay);
+  return new Date(y, m, d, src.getHours(), src.getMinutes(), src.getSeconds(), src.getMilliseconds());
+}
+
+/** 每月兜底：加 interval 个月，保留原始日（无 daysOfMonth 时使用） */
+function advanceMonthlyFallback(from: Date, interval: number): number {
   let y = from.getFullYear();
   let m = from.getMonth() + interval;
   while (m > 11) {
     m -= 12;
     y += 1;
   }
-
-  // 目标月的最大天数（用下个月第 0 天 = 本月最后一天）
   const maxDay = new Date(y, m + 1, 0).getDate();
-  const d = Math.min(targetDay, maxDay);
-
-  const next = new Date(y, m, d, from.getHours(), from.getMinutes(), from.getSeconds(), from.getMilliseconds());
-  return next.getTime();
+  const d = Math.min(from.getDate(), maxDay);
+  return new Date(y, m, d, from.getHours(), from.getMinutes(), from.getSeconds(), from.getMilliseconds()).getTime();
 }
 
 /**
@@ -135,28 +161,31 @@ export function formatRecurrence(
 
       const dayStr = days.map((d) => dayNames[d]).join("、");
       if (interval === 1) {
-        return isZh ? `每${dayStr}` : `Every ${dayStr}`;
+        return isZh ? `每周${dayStr}` : `Every ${dayStr}`;
       }
       return isZh
         ? `每${interval}周${dayStr}`
         : `Every ${interval} weeks on ${dayStr}`;
     }
     case "monthly": {
-      const day = cfg.dayOfMonth;
+      const days = cfg.daysOfMonth && cfg.daysOfMonth.length > 0
+        ? cfg.daysOfMonth
+        : (cfg.dayOfMonth != null ? [cfg.dayOfMonth] : []);
       const interval = cfg.interval || 1;
+      const dayStr = days.slice().sort((a, b) => a - b).join(isZh ? "、" : ", ");
       if (interval === 1) {
-        return day
+        return days.length
           ? isZh
-            ? `每月${day}号`
-            : `Monthly on day ${day}`
+            ? `每月${dayStr}号`
+            : `Monthly on day ${dayStr}`
           : isZh
             ? "每月重复"
             : "Monthly";
       }
-      return day
+      return days.length
         ? isZh
-          ? `每${interval}月${day}号`
-          : `Every ${interval} months on day ${day}`
+          ? `每${interval}月${dayStr}号`
+          : `Every ${interval} months on day ${dayStr}`
         : isZh
           ? `每${interval}月重复`
           : `Every ${interval} months`;

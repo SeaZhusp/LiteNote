@@ -39,9 +39,11 @@ fn compute_next_due(current_due_ms: i64, recurrence_type: &str, config: &str) ->
     let cfg: HashMap<String, serde_json::Value> = serde_json::from_str(config).ok()?;
     let interval = cfg.get("interval").and_then(|v| v.as_i64()).unwrap_or(1).max(1);
 
-    // 毫秒 → NaiveDateTime
+    // 毫秒 → NaiveDateTime（注意：前端存储的 due_date 是「本地时间」毫秒戳，
+    // 必须用 naive_local() 解析，才能与前端 computeNextDueDate 的 new Date(ms) 保持一致。
+    // 若用 naive_utc() 会把本地时间误当 UTC，导致每月/每日的 day/hour 整体偏移。）
     let dt = match DateTime::from_timestamp(current_due_ms / 1000, 0) {
-        Some(dt) => dt.naive_utc(),
+        Some(dt) => dt.naive_local(),
         None => return None,
     };
 
@@ -74,35 +76,56 @@ fn compute_next_due(current_due_ms: i64, recurrence_type: &str, config: &str) ->
             }
         }
         "monthly" => {
-            let day_of_month = cfg.get("dayOfMonth")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(dt.day() as i64) as u32;
+            // 多选日期：优先 daysOfMonth，回退 dayOfMonth
+            let mut days: Vec<i64> = if let Some(arr) = cfg.get("daysOfMonth").and_then(|v| v.as_array()) {
+                arr.iter().filter_map(|x| x.as_i64()).collect()
+            } else if let Some(d) = cfg.get("dayOfMonth").and_then(|v| v.as_i64()) {
+                vec![d]
+            } else {
+                vec![dt.day() as i64]
+            };
+            days.sort_unstable();
+            days.dedup();
 
-            // 每次过期都推进 interval 个月（不判断 day 大小，因为函数只在过期时调用）
-            let mut y = dt.date().year();
-            let mut m = dt.date().month() as i32 + interval as i32;
-            while m > 12 {
-                m -= 12;
-                y += 1;
+            let current_day = dt.day() as i64;
+            // 先在「当前月」找下一个更大的日期
+            if let Some(&nd) = days.iter().find(|&&d| d > current_day) {
+                let max_day = dt.date().num_days_in_month() as i64;
+                let target_day = nd.min(max_day).max(1);
+                let target_date = NaiveDate::from_ymd_opt(dt.year(), dt.month(), target_day as u32)?;
+                let candidate = target_date.and_hms_opt(dt.hour(), dt.minute(), dt.second())?;
+                if candidate > dt {
+                    candidate
+                } else {
+                    // 退化：跨月处理
+                    monthly_next(dt, interval, &days)?
+                }
+            } else {
+                monthly_next(dt, interval, &days)?
             }
-
-            // 目标月最大天数
-            let max_day = NaiveDate::from_ymd_opt(y, m as u32, 1)
-                .and_then(|d| d.checked_add_months(Months::new(1)))
-                .and_then(|d| d.pred_opt())
-                .map(|d| d.day())
-                .unwrap_or(31);
-
-            let target_day = day_of_month.min(max_day);
-            let target_date = NaiveDate::from_ymd_opt(y, m as u32, target_day)?;
-
-            target_date
-                .and_hms_opt(dt.hour(), dt.minute(), dt.second())?
         }
         _ => return None,
     };
 
     Some(next_dt.and_utc().timestamp_millis())
+}
+
+/// 每月多选：当前月已无更大日期时，跨 interval 个月取列表最小值
+fn monthly_next(dt: chrono::NaiveDateTime, interval: i64, days: &[i64]) -> Option<chrono::NaiveDateTime> {
+    let mut y = dt.year();
+    let mut m = dt.month() as i32 + interval as i32;
+    while m > 12 {
+        m -= 12;
+        y += 1;
+    }
+    let max_day = NaiveDate::from_ymd_opt(y, m as u32, 1)
+        .and_then(|d| d.checked_add_months(Months::new(1)))
+        .and_then(|d| d.pred_opt())
+        .map(|d| d.day())
+        .unwrap_or(31);
+    let target_day = (days[0] as u32).min(max_day).max(1);
+    let target_date = NaiveDate::from_ymd_opt(y, m as u32, target_day)?;
+    target_date.and_hms_opt(dt.hour(), dt.minute(), dt.second())
 }
 
 

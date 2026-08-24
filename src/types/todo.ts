@@ -14,10 +14,12 @@ export type RecurrenceType = (typeof RECURRENCE_TYPES)[number];
 export interface RecurrenceConfig {
   /** 间隔数，如 2 表示每 2 天/周/月 */
   interval: number;
-  /** 每周：指定星期几，0=周日 1=周一 ... 6=周六 */
+  /** 每周：指定星期几（多选），0=周日 1=周一 ... 6=周六 */
   days?: number[];
-  /** 每月：指定几号（1-31） */
+  /** 每月：指定几号（兼容旧数据，单选） */
   dayOfMonth?: number;
+  /** 每月：指定几号（多选），1-31，优先于 dayOfMonth */
+  daysOfMonth?: number[];
 }
 
 export interface TodoItem {
