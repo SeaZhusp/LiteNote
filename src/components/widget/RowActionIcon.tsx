@@ -24,7 +24,7 @@ export function RowActionIcon({
   const variantCls =
     variant === "danger"
       ? "hover:bg-red-500/15 hover:!text-red-500 focus:bg-red-500/15 focus:!text-red-500"
-      : "hover:bg-white/10 focus:bg-white/10";
+      : "hover:bg-[var(--ln-theme-surface-hover)] focus:bg-[var(--ln-theme-surface-hover)]";
   return (
     <button
       type="button"

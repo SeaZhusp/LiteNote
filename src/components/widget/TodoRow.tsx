@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useSettingsStore } from "@/stores/settingsStore";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Locale } from "@/i18n";
 import { t } from "@/i18n";
@@ -138,8 +137,7 @@ function ManagementTodoRow({
   onOpenNote,
 }: Omit<TodoRowProps, "focusMode">) {
   const accent = COLOR_DOT_STYLE[todo.colorId].background;
-  const theme = useSettingsStore((s) => s.theme);
-  const trashColor = theme === "light" ? "#000000" : "#e2e8f0";
+  const trashColor = "var(--ln-theme-text-secondary)";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const setTodoNote = useTodoStore((s) => s.setTodoNote);
