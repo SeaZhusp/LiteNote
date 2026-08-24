@@ -64,6 +64,8 @@ export function WidgetShell() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const reminderMode = useSettingsStore((s) => s.reminderMode);
   const setReminderMode = useSettingsStore((s) => s.setReminderMode);
+  const remindAdvanceMin = useSettingsStore((s) => s.remindAdvanceMin);
+  const setRemindAdvanceMin = useSettingsStore((s) => s.setRemindAdvanceMin);
   const focusMode = useSettingsStore((s) => s.focusMode);
   const settingsInitialized = useSettingsStore((s) => s.initialized);
   const lastSettingsError = useSettingsStore((s) => s.lastError);
@@ -441,6 +443,8 @@ export function WidgetShell() {
           onSetTheme={setTheme}
           reminderMode={reminderMode}
           onSetReminderMode={setReminderMode}
+          remindAdvanceMin={remindAdvanceMin}
+          onSetRemindAdvanceMin={setRemindAdvanceMin}
           onClose={() => setShowSettings(false)}
         />
 

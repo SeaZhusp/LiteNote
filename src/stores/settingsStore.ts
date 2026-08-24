@@ -19,6 +19,7 @@ export interface SettingsState {
   autoStart: boolean;
   theme: ThemeId;
   reminderMode: "popup" | "system";
+  remindAdvanceMin: number;
   focusMode: boolean;
   fullWindowWidth: number;
   fullWindowHeight: number;
@@ -40,6 +41,7 @@ export interface SettingsActions {
   setAutoStart: (v: boolean) => void;
   setTheme: (t: ThemeId) => void;
   setReminderMode: (m: "popup" | "system") => void;
+  setRemindAdvanceMin: (v: number) => void;
   setFocusMode: (v: boolean) => void;
   setShortcut: (key: "shortcutToggleWindow" | "shortcutFocusMode" | "shortcutPin", value: string) => void;
   /** 供外部同步调用：用 DB 最新值覆盖 store */
@@ -189,6 +191,17 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       dbWrite(
         saveSetting("reminderMode", m),
         "saveSetting(reminderMode)",
+        (msg) => set({ lastError: msg }),
+        emitSettingsChanged,
+      );
+    },
+
+    setRemindAdvanceMin: (v) => {
+      const val = Math.min(1440, Math.max(1, Math.floor(v || 0)));
+      set({ remindAdvanceMin: val });
+      dbWrite(
+        saveSetting("remindAdvanceMin", val),
+        "saveSetting(remindAdvanceMin)",
         (msg) => set({ lastError: msg }),
         emitSettingsChanged,
       );

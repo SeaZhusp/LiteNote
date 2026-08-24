@@ -24,6 +24,8 @@ interface SettingsModalProps {
   onSetTheme: (t: ThemeId) => void;
   reminderMode: "popup" | "system";
   onSetReminderMode: (m: "popup" | "system") => void;
+  remindAdvanceMin: number;
+  onSetRemindAdvanceMin: (v: number) => void;
   onClose: () => void;
 }
 
@@ -177,6 +179,70 @@ function CustomSelect<T extends string>({
             document.body,
           )}
       </div>
+    </div>
+  );
+}
+
+/* ──────────── NumberInput 数字输入（带单位） ──────────── */
+function NumberInput({
+  label,
+  value,
+  onChange,
+  unit,
+  hint,
+  min = 1,
+  max = 1440,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  unit?: string;
+  hint?: string;
+  min?: number;
+  max?: number;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+
+  // 当外部值变化（如加载设置）时同步草稿
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const parsed = Math.floor(Number(draft));
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const clamped = Math.min(max, Math.max(min, parsed));
+    setDraft(String(clamped));
+    if (clamped !== value) onChange(clamped);
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span style={{ color: "var(--ln-theme-text)" }} className="text-sm">{label}</span>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={min}
+            max={max}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            className="w-20 rounded-md border border-[var(--ln-theme-border)] bg-[var(--ln-theme-surface)] px-2 py-1 text-center text-sm outline-none focus-visible:outline-2 focus-visible:outline-sky-400"
+            style={{ color: "var(--ln-theme-text)" }}
+          />
+          {unit ? <span className="text-xs text-[var(--ln-theme-text-muted)]">{unit}</span> : null}
+        </div>
+      </div>
+      {hint ? (
+        <span className="text-xs text-[var(--ln-theme-text-muted)]">{hint}</span>
+      ) : null}
     </div>
   );
 }
@@ -721,6 +787,8 @@ export function SettingsModal({
   onSetTheme,
   reminderMode,
   onSetReminderMode,
+  remindAdvanceMin,
+  onSetRemindAdvanceMin,
   onClose,
 }: SettingsModalProps) {
   const mk = (key: MessageKey) => t(locale, key);
@@ -872,6 +940,18 @@ export function SettingsModal({
               { value: "popup" as const, label: mk("reminderModePopup") },
               { value: "system" as const, label: mk("reminderModeSystem") },
             ]}
+          />
+        </section>
+
+        {/* 提前提醒（分钟，可自定义） */}
+        <section className="mb-3">
+          <NumberInput
+            label={mk("remindAdvanceLabel")}
+            value={remindAdvanceMin}
+            onChange={onSetRemindAdvanceMin}
+            unit={mk("remindAdvanceUnit")}
+            min={1}
+            max={1440}
           />
         </section>
         <div className="mb-3" style={{ borderTop: `1px solid var(--ln-theme-border-light)` }} />

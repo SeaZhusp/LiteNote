@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   autoStart: true,
   theme: "glass" as ThemeId,
   reminderMode: "popup" as "popup" | "system",
+  /** 提醒提前量（分钟），默认 15 分钟 */
+  remindAdvanceMin: 15,
   focusMode: false,
   fullWindowWidth: 360,
   fullWindowHeight: 620,
@@ -46,6 +48,7 @@ export interface AppSettings {
   readonly autoStart: boolean;
   readonly theme: ThemeId;
   readonly reminderMode: "popup" | "system";
+  readonly remindAdvanceMin: number;
   readonly focusMode: boolean;
   readonly fullWindowWidth: number;
   readonly fullWindowHeight: number;

@@ -18,9 +18,6 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 mod webdav;
 
-/// 提醒提前量（毫秒），默认 15 分钟
-const REMIND_ADVANCE_MS: i64 = 15 * 60 * 1000;
-
 /// 背景提醒轮询间隔
 const REMINDER_POLL_INTERVAL_SECS: u64 = 30;
 
@@ -183,15 +180,17 @@ struct ReminderRow {
 }
 
 /// 查询到当前应当弹出提醒的待办
-/// - 命中条件：due_date > 0 且 due_date - REMIND_ADVANCE_MS <= now 且 reminded = 0
-fn query_due_reminders(conn: &Connection, now: i64) -> Vec<ReminderRow> {
-    let threshold = now + REMIND_ADVANCE_MS;
+/// - 命中条件：due_date > 0 且 due_date <= now + advance_ms 且 reminded = 0
+///   即「距离到期不足 advance_ms 即触发」。注意 advance_ms 只参与一次比较，
+///   不可用 `due_date - advance_ms <= now + advance_ms`，那样会变成 2 倍提前量。
+fn query_due_reminders(conn: &Connection, now: i64, advance_ms: i64) -> Vec<ReminderRow> {
+    let threshold = now + advance_ms;
 
     let mut stmt = match conn.prepare(
         "SELECT id, text, due_date \
          FROM todos \
          WHERE due_date > 0 \
-           AND due_date - ?1 <= ?2 \
+           AND due_date <= ?1 \
            AND reminded = 0",
     ) {
         Ok(s) => s,
@@ -202,7 +201,7 @@ fn query_due_reminders(conn: &Connection, now: i64) -> Vec<ReminderRow> {
     };
 
     let rows = match stmt.query_map(
-        rusqlite::params![REMIND_ADVANCE_MS, threshold],
+        rusqlite::params![threshold],
         |row| {
             Ok(ReminderRow {
                 id: row.get(0)?,
@@ -308,6 +307,36 @@ fn read_reminder_mode(conn: &Connection) -> String {
         |row| row.get::<_, String>(0),
     )
     .unwrap_or_else(|_| "popup".to_string())
+}
+
+/// 从 settings 表读取提醒提前量（分钟），默认 15
+fn read_remind_advance_min(conn: &Connection) -> i64 {
+    let has_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if !has_table {
+        return 15;
+    }
+    let raw: String = match conn.query_row(
+        "SELECT value FROM settings WHERE key = 'remindAdvanceMin'",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(v) => v,
+        Err(_) => return 15,
+    };
+    // 前端 saveSetting 对数字用 JSON.stringify 存储（如 "15"，带引号），
+    // 去掉首尾引号再解析，否则 parse::<i64>() 会失败而回退默认值。
+    let trimmed = raw.trim().trim_matches('"');
+    trimmed
+        .parse::<i64>()
+        .ok()
+        .map(|m| m.clamp(1, 1440))
+        .unwrap_or(15)
 }
 
 /// 统一打开数据库连接并启用 WAL + busy_timeout，降低与前端 tauri-plugin-sql
@@ -594,8 +623,9 @@ fn check_and_notify(app: &AppHandle, db_path: &std::path::Path) {
         return;
     }
 
-    // 读取用户设置的提醒方式
+    // 读取用户设置的提醒方式与提前量
     let reminder_mode = read_reminder_mode(&conn);
+    let advance_ms = read_remind_advance_min(&conn) * 60 * 1000;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -603,7 +633,7 @@ fn check_and_notify(app: &AppHandle, db_path: &std::path::Path) {
         .as_millis() as i64;
 
     // 1. 提醒检查
-    let rows = query_due_reminders(&conn, now);
+    let rows = query_due_reminders(&conn, now, advance_ms);
     if !rows.is_empty() {
         println!(
             "[LiteNote] 发现 {} 条待办需要提醒 (mode={})",
