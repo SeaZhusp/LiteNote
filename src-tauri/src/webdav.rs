@@ -133,6 +133,11 @@ fn open_db(path: &Path) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| format!("打开 DB 失败: {e}"))?;
     let _ = conn.execute("PRAGMA journal_mode=WAL", []);
     let _ = conn.execute("PRAGMA busy_timeout=5000", []);
+    // 关键：前端 tauri-plugin-sql 与 Rust 端各自持有独立连接，彼此的写（如删除待办）
+    // 先落在各自的 WAL 文件中，尚未合并进主库。若此处新开的连接直接读，会读到删除前的
+    // 旧快照，导致「立即同步」把云端覆盖成「含已删待办」的过期数据，进而 5 分钟双向
+    // 同步又把旧待办复活弹窗。打开即做一次 WAL checkpoint，确保读到最新已提交数据。
+    let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", []);
     Ok(conn)
 }
 
@@ -341,7 +346,14 @@ fn get_config<R: Runtime>(
 }
 
 /// 本地与远端逐条合并（last-write-wins：以 update_time 较大者为准）。
-/// 任一端缺失的条目直接采用对端；同 id 冲突时取 update_time 更大的一方。
+///
+/// 重要语义：本项目删除为硬删除，且「本机删除 = 本地权威」。`merge_todos` 仅用于后台 5 分钟
+/// 双向同步，因此当某 id 在本地已不存在（即用户已删除）时，**不从远端接纳该待办**，避免
+/// 云端残留的历史数据被反复复活（复活后又会触发过期提醒弹窗）。
+///
+/// - 本地存在的条目：按 update_time 较大者为准（多设备互相覆盖丢数据的防护）。
+/// - 本地不存在的远端条目（已删除）：丢弃。若用户确实需要「从云端恢复整份数据」，请使用
+///   手动的 `download_from_webdav`（走 overwrite_local_todos，不经过本合并逻辑）。
 fn merge_todos(local: Vec<TodoItemSync>, remote: Vec<TodoItemSync>) -> Vec<TodoItemSync> {
     let mut map: std::collections::HashMap<String, TodoItemSync> = std::collections::HashMap::new();
     for t in local {
@@ -349,10 +361,13 @@ fn merge_todos(local: Vec<TodoItemSync>, remote: Vec<TodoItemSync>) -> Vec<TodoI
     }
     for r in remote {
         match map.get(&r.id) {
+            // 本地仍存在的条目：last-write-wins
             Some(l) if l.update_time >= r.update_time => { /* 本地更新更新，保留本地 */ }
-            _ => {
+            Some(_) => {
                 map.insert(r.id.clone(), r);
             }
+            // 本地已删除（id 不存在）：丢弃远端残留，不同步回来
+            None => { /* 本地已删除，保持权威，不接纳远端 */ }
         }
     }
     let mut merged: Vec<TodoItemSync> = map.into_values().collect();
