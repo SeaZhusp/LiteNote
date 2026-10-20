@@ -33,6 +33,8 @@ export const DEFAULT_SETTINGS = {
   shortcutPin: "CmdOrCtrl+Shift+P",
   /** 锁定窗口：禁止通过顶栏/拖拽手柄移动整个悬浮窗口 */
   locked: false,
+  /** 自定义背景图片（DataURL），为 null 时使用主题渐变 */
+  backgroundImage: null,
   // WebDAV 同步（密码不在此处，由 Rust 端加密存储）
   webdavEnabled: false,
   webdavUrl: "",
@@ -58,6 +60,7 @@ export interface AppSettings {
   readonly shortcutFocusMode: string;
   readonly shortcutPin: string;
   readonly locked: boolean;
+  readonly backgroundImage: string | null;
   readonly webdavEnabled: boolean;
   readonly webdavUrl: string;
   readonly webdavUser: string;

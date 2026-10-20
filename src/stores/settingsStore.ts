@@ -27,6 +27,9 @@ export interface SettingsState {
   shortcutFocusMode: string;
   shortcutPin: string;
   locked: boolean;
+  backgroundImage: string | null;
+  /** 背景图片的 DataURL（仅内存渲染用，不持久化） */
+  backgroundImageDataUrl: string | null;
   initialized: boolean;
   /** 最近一次 DB 写入错误信息，供 UI 展示 */
   lastError: string | null;
@@ -46,6 +49,7 @@ export interface SettingsActions {
   setFocusMode: (v: boolean) => void;
   setShortcut: (key: "shortcutToggleWindow" | "shortcutFocusMode" | "shortcutPin", value: string) => void;
   setLocked: (v: boolean) => void;
+  setBackgroundImage: (v: string | null) => void;
   /** 供外部同步调用：用 DB 最新值覆盖 store */
   reloadFromDb: () => Promise<void>;
   clearError: () => void;
@@ -76,6 +80,7 @@ function dbWrite(
 export const useSettingsStore = create<SettingsState & SettingsActions>()(
   (set) => ({
     ...DEFAULT_SETTINGS,
+    backgroundImageDataUrl: null,
     initialized: false,
     lastError: null,
 
@@ -84,6 +89,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
     init: async () => {
       const settings = await loadSettings();
       set({ ...settings, initialized: true });
+      hydrateBackgroundDataUrl(settings.backgroundImage);
 
       // 启动时同步 autostart 插件状态与保存的设置
       if (settings.autoStart) {
@@ -103,6 +109,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       try {
         const settings = await loadSettings();
         set({ ...settings });
+        hydrateBackgroundDataUrl(settings.backgroundImage);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         set({ lastError: `加载设置失败: ${msg}` });
@@ -247,8 +254,41 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
           emitSettingsChanged,
           );
           },
+
+          setBackgroundImage: (v) => {
+          set({ backgroundImage: v });
+          dbWrite(
+          saveSetting("backgroundImage", v),
+          "saveSetting(backgroundImage)",
+          (msg) => set({ lastError: msg }),
+          emitSettingsChanged,
+          );
+          hydrateBackgroundDataUrl(v);
+          },
           }),
 );
+
+/**
+ * 根据落盘的背景图路径，异步读取为 DataURL 并写入内存供渲染。
+ * DB 只存路径；图片字节留在磁盘，避免大图写进设置字段。
+ */
+function hydrateBackgroundDataUrl(path: string | null): void {
+  if (!path) {
+    useSettingsStore.setState({ backgroundImageDataUrl: null });
+    return;
+  }
+  // 兼容早期直接存 DataURL 的数据
+  if (path.startsWith("data:")) {
+    useSettingsStore.setState({ backgroundImageDataUrl: path });
+    return;
+  }
+  invoke<string>("read_background_image", { path })
+    .then((dataUrl) => useSettingsStore.setState({ backgroundImageDataUrl: dataUrl }))
+    .catch((e) => {
+      console.error("[LiteNote] 读取背景图片失败:", e);
+      useSettingsStore.setState({ backgroundImageDataUrl: null });
+    });
+}
 
 // ──────────────── 跨窗口设置同步 ────────────────
 

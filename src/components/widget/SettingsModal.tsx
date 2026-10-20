@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Locale, LocaleMode } from "@/i18n";
 import type { MessageKey } from "@/i18n/messages";
 import { t } from "@/i18n";
@@ -26,6 +28,9 @@ interface SettingsModalProps {
   onSetReminderMode: (m: "popup" | "system") => void;
   remindAdvanceMin: number;
   onSetRemindAdvanceMin: (v: number) => void;
+  backgroundImage: string | null;
+  backgroundImageDataUrl: string | null;
+  onSetBackgroundImage: (v: string | null) => void;
   onClose: () => void;
 }
 
@@ -789,11 +794,32 @@ export function SettingsModal({
   onSetReminderMode,
   remindAdvanceMin,
   onSetRemindAdvanceMin,
+  backgroundImage,
+  backgroundImageDataUrl,
+  onSetBackgroundImage,
   onClose,
 }: SettingsModalProps) {
   const mk = (key: MessageKey) => t(locale, key);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SettingsTab>("general");
+  // 选择本地图片 → 复制到应用数据目录 → 存路径（避免大图写入设置字段）
+  const handleChooseBg = useCallback(async () => {
+    try {
+      const picked = await openDialog({
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
+      });
+      if (typeof picked === "string") {
+        const dest = await invoke<string>("save_background_image", { src: picked });
+        onSetBackgroundImage(dest);
+      }
+    } catch (e) {
+      console.error("[LiteNote] 选择背景图片失败:", e);
+    }
+  }, [onSetBackgroundImage]);
+
+  // 预览用 DataURL（由 store 异步从落盘文件读取）
+  const bgDisplayUrl = backgroundImageDataUrl;
 
   // ESC 关闭
   useEffect(() => {
@@ -906,6 +932,50 @@ export function SettingsModal({
               cursor: pointer;
             }
           `}</style>
+        </section>
+
+        {/* 自定义背景图片 */}
+        <section className="mb-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm" style={{ color: "var(--ln-theme-text)" }}>
+              {mk("backgroundImage")}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {bgDisplayUrl ? (
+                <span
+                  className="block h-6 w-9 shrink-0 rounded border"
+                  style={{
+                    borderColor: "var(--ln-theme-border)",
+                    backgroundImage: `url(${bgDisplayUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleChooseBg()}
+                className="rounded-md px-2 py-1 text-xs transition hover:opacity-80"
+                style={{ color: "var(--ln-theme-text)", background: "var(--ln-theme-surface)", border: `1px solid var(--ln-theme-border)` }}
+              >
+                {mk("backgroundImageSelect")}
+              </button>
+              {backgroundImage ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSetBackgroundImage(null);
+                    void invoke("clear_background_image").catch(() => {});
+                  }}
+                  className="rounded-md px-2 py-1 text-xs transition hover:opacity-80"
+                  style={{ color: "#f87171", background: "var(--ln-theme-surface)", border: `1px solid var(--ln-theme-border)` }}
+                  title={mk("clearBackground")}
+                >
+                  {mk("clearBackground")}
+                </button>
+              ) : null}
+            </div>
+          </div>
         </section>
 
         {/* 功能开关 */}

@@ -52,6 +52,9 @@ export function WidgetShell() {
   const setAlwaysOnTop = useSettingsStore((s) => s.setAlwaysOnTop);
   const locked = useSettingsStore((s) => s.locked);
   const setLocked = useSettingsStore((s) => s.setLocked);
+  const backgroundImage = useSettingsStore((s) => s.backgroundImage);
+  const backgroundImageDataUrl = useSettingsStore((s) => s.backgroundImageDataUrl);
+  const setBackgroundImage = useSettingsStore((s) => s.setBackgroundImage);
   const panelOpacity = useSettingsStore((s) => s.panelOpacity);
   const setPanelOpacity = useSettingsStore((s) => s.setPanelOpacity);
   const localeMode = useSettingsStore((s) => s.localeMode);
@@ -119,7 +122,7 @@ export function WidgetShell() {
   const noopContextMenu = useCallback((_e: React.MouseEvent, _id: string) => {}, []);
   const noopChangeText = useCallback((_id: string, _text: string) => {}, []);
 
-  // 背景层样式：包含透明度和实际背景
+  // 背景基础层：始终绘制主题渐变（保证任何情况下样式不塌）
   const bgLayerStyle: React.CSSProperties = useMemo(
     () => ({
       opacity: panelOpacity,
@@ -129,6 +132,16 @@ export function WidgetShell() {
     }),
     [panelOpacity],
   );
+
+  // 自定义背景图片覆盖层：以 DataURL 渲染（不依赖资源协议/不受路径字符影响）
+  const bgImageStyle: React.CSSProperties | null = backgroundImageDataUrl
+    ? {
+        backgroundImage: `url("${backgroundImageDataUrl}")`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }
+    : null;
 
   const {
     todos,
@@ -302,7 +315,9 @@ export function WidgetShell() {
           <div
             className="pointer-events-none absolute inset-0 z-0"
             style={bgLayerStyle}
-          />
+          >
+            {bgImageStyle ? <div className="absolute inset-0" style={bgImageStyle} /> : null}
+          </div>
           {/* 内容层 - 文字永远清晰可见 */}
           <div className="relative z-10 flex h-full min-h-0 w-full flex-col">
             <FocusDragHandle />
@@ -328,7 +343,9 @@ export function WidgetShell() {
         <div
           className="pointer-events-none absolute inset-0 z-0"
           style={bgLayerStyle}
-        />
+        >
+          {bgImageStyle ? <div className="absolute inset-0" style={bgImageStyle} /> : null}
+        </div>
         {/* 内容层 - 文字永远清晰可见 */}
         <div className="relative z-10 flex h-full min-h-0 w-full flex-col">
         <HeaderBar
@@ -449,6 +466,9 @@ export function WidgetShell() {
           onSetAutoStart={setAutoStart}
           theme={theme}
           onSetTheme={setTheme}
+          backgroundImage={backgroundImage}
+          backgroundImageDataUrl={backgroundImageDataUrl}
+          onSetBackgroundImage={setBackgroundImage}
           reminderMode={reminderMode}
           onSetReminderMode={setReminderMode}
           remindAdvanceMin={remindAdvanceMin}

@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
@@ -792,6 +793,82 @@ fn update_shortcuts(app: AppHandle) -> Result<(), String> {
     register_all_shortcuts(&app)
 }
 
+/// 将用户选择的背景图片复制到应用数据目录（background/wallpaper.<ext>），
+/// 返回复制后的绝对路径。前端把该路径存入设置，避免把大图以 base64 写进 DB 字段。
+#[tauri::command]
+fn save_background_image(app: AppHandle, src: String) -> Result<String, String> {
+    let src_path = Path::new(&src);
+    if !src_path.is_file() {
+        return Err("源文件不存在或不是文件".into());
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {e}"))?;
+    let bg_dir = dir.join("background");
+    fs::create_dir_all(&bg_dir).map_err(|e| format!("创建背景目录失败: {e}"))?;
+
+    // 清理旧文件（扩展名可能不同）
+    if let Ok(entries) = fs::read_dir(&bg_dir) {
+        for entry in entries.flatten() {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+
+    let ext = src_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| "png".to_string());
+    let dest = bg_dir.join(format!("wallpaper.{ext}"));
+
+    fs::copy(src_path, &dest).map_err(|e| format!("复制背景图片失败: {e}"))?;
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// 读取已落盘的背景图片并返回 DataURL，供前端在 CSS 中直接渲染。
+/// 数据库只存路径，避免把大图 base64 写进设置字段。
+#[tauri::command]
+fn read_background_image(path: String) -> Result<String, String> {
+    let p = Path::new(&path);
+    if !p.is_file() {
+        return Err("背景图片文件不存在".into());
+    }
+    let bytes = fs::read(p).map_err(|e| format!("读取背景图片失败: {e}"))?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| "png".to_string());
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        _ => "image/png",
+    };
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+/// 删除已保存的背景图片目录（用户清除背景时调用）。
+#[tauri::command]
+fn clear_background_image(app: AppHandle) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {e}"))?;
+    let bg_dir = dir.join("background");
+    if bg_dir.is_dir() {
+        let _ = fs::remove_dir_all(&bg_dir);
+    }
+    Ok(())
+}
+
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1037,6 +1114,9 @@ pub fn run() {
             set_focus_mode,
             set_always_on_top,
             update_shortcuts,
+            save_background_image,
+            read_background_image,
+            clear_background_image,
             webdav::webdav_set_config,
             webdav::webdav_get_config,
             webdav::webdav_test,
