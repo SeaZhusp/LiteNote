@@ -18,6 +18,8 @@
         "height": 620,
         "decorations": false,
         "transparent": true,
+        "titleBarStyle": "Transparent",
+        "hiddenTitle": true,
         "shadow": false,
         "skipTaskbar": true,
         "maximizable": false

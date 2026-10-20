@@ -8,7 +8,9 @@ import { Icon } from "@/components/Icon";
 interface HeaderBarProps {
   locale: Locale;
   alwaysOnTop: boolean;
+  locked: boolean;
   onToggleAlwaysOnTop: () => void;
+  onToggleLock: () => void;
   onOpenSettings: () => void;
   onOpenAbout: () => void;
   onHide: () => void;
@@ -21,7 +23,9 @@ const iconStyle = { color: "var(--ln-theme-text)" } as React.CSSProperties;
 export function HeaderBar({
   locale,
   alwaysOnTop,
+  locked,
   onToggleAlwaysOnTop,
+  onToggleLock,
   onOpenSettings,
   onOpenAbout,
   onHide,
@@ -37,13 +41,13 @@ export function HeaderBar({
 
   return (
     <header
-      className="flex h-11 shrink-0 cursor-grab select-none items-center px-1 active:cursor-grabbing"
+      className={`flex h-11 shrink-0 select-none items-center px-1 ${locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
       style={{ borderBottom: `1px solid var(--ln-theme-header-border)` }}
-      data-tauri-drag-region
+      data-tauri-drag-region={locked ? undefined : true}
     >
       <div
         className="flex min-h-0 min-w-0 flex-1 items-center gap-1.5 self-stretch pl-2 pr-2"
-        data-tauri-drag-region
+        data-tauri-drag-region={locked ? undefined : true}
       >
         <span className="truncate text-sm font-semibold leading-none" style={{ color: "var(--ln-theme-text)" }}>
           {mk("appName")}
@@ -100,6 +104,29 @@ export function HeaderBar({
           onClick={onToggleAlwaysOnTop}
         >
           <Icon name={alwaysOnTop ? "pushpin-fill" : "pushpin-line"} />
+        </button>
+        <button
+          type="button"
+          className={iconBtn}
+          style={iconStyle}
+          title={locked ? mk("unlockWindow") : mk("lockWindow")}
+          aria-label={locked ? mk("unlockWindow") : mk("lockWindow")}
+          aria-pressed={locked}
+          onClick={onToggleLock}
+        >
+          {locked ? (
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="12" cy="15.5" r="1.3" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 11V8a4 4 0 0 1 7.5-1.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="12" cy="15.5" r="1.3" fill="currentColor" />
+            </svg>
+          )}
         </button>
         <button type="button" className={iconBtn} style={iconStyle} title={mk("hideWindow")} onClick={onHide}>
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>

@@ -82,6 +82,12 @@ button {
 [data-tauri-drag-region] {
   -webkit-app-region: drag;
 }
+
+/* 锁定模式：关闭所有拖拽区域（同时取消 grab 光标），禁止移动窗口 */
+html.ln-locked [data-tauri-drag-region] {
+  -webkit-app-region: no-drag;
+  cursor: default;
+}
 [data-tauri-no-drag] {
   -webkit-app-region: no-drag;
 }

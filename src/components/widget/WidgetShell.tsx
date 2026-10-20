@@ -50,6 +50,8 @@ function endOfDay(ts: number): number {
 export function WidgetShell() {
   const alwaysOnTop = useSettingsStore((s) => s.alwaysOnTop);
   const setAlwaysOnTop = useSettingsStore((s) => s.setAlwaysOnTop);
+  const locked = useSettingsStore((s) => s.locked);
+  const setLocked = useSettingsStore((s) => s.setLocked);
   const panelOpacity = useSettingsStore((s) => s.panelOpacity);
   const setPanelOpacity = useSettingsStore((s) => s.setPanelOpacity);
   const localeMode = useSettingsStore((s) => s.localeMode);
@@ -332,7 +334,9 @@ export function WidgetShell() {
         <HeaderBar
           locale={locale}
           alwaysOnTop={alwaysOnTop}
+          locked={locked}
           onToggleAlwaysOnTop={() => setAlwaysOnTop(!alwaysOnTop)}
+          onToggleLock={() => setLocked(!locked)}
           onOpenAbout={() => setShowAbout(true)}
           onOpenSettings={() => setShowSettings(true)}
           onHide={handleHide}

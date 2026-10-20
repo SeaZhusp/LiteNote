@@ -954,8 +954,53 @@ fn tray_image<R: Runtime>(app: &AppHandle<R>) -> Image<'static> {
     Image::new_owned(rgba, 32, 32)
 }
 
+/// 若窗口当前位置完全落在主屏可见区域之外（如多屏断开、分辨率变化、
+/// 或 window-state 恢复了离屏坐标），把它重新锚定到主屏可见区域内。
+/// 否则 `show()` 虽成功，窗口却「看不见」，表现为「启动打不开 / 点托盘也不出来」。
+fn ensure_window_on_screen<R: Runtime>(window: &tauri::WebviewWindow<R>) {
+    let app = window.app_handle();
+    let monitor = match app.primary_monitor() {
+        Ok(Some(m)) => m,
+        _ => return,
+    };
+    let scale = monitor.scale_factor();
+    let ms = monitor.size();
+    let mp = monitor.position();
+    // 统一换算到逻辑坐标（与 set_position 使用的一致）
+    let (mon_x, mon_y, mon_w, mon_h) = (
+        mp.x as f64 / scale,
+        mp.y as f64 / scale,
+        ms.width as f64 / scale,
+        ms.height as f64 / scale,
+    );
+
+    let pos = match window.outer_position() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let size = match window.outer_size() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    // outer_position/outer_size 返回的是物理像素，需除以 scale 与上面的
+    // 逻辑坐标（mon_x/mon_y/mon_w/mon_h）保持同一坐标系，否则在 Retina
+    // 屏（scale=2）上会误判为离屏而把窗口居中重定位（表现为「拖到某位置点托盘又回去」）。
+    let (px, py) = (pos.x as f64 / scale, pos.y as f64 / scale);
+    let (w, h) = (size.width as f64 / scale, size.height as f64 / scale);
+
+    // 窗口至少有一部分在屏幕内才视为「在屏上」
+    let on_screen = px < mon_x + mon_w && px + w > mon_x && py < mon_y + mon_h && py + h > mon_y;
+    if !on_screen {
+        let new_x = mon_x + (mon_w - w).max(0.0) / 2.0;
+        let new_y = mon_y + 40.0;
+        let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+    }
+}
+
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
+        // 先修正可能的离屏坐标，再显示/聚焦，确保窗口一定出现在可见区域
+        ensure_window_on_screen(&w);
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
@@ -1033,12 +1078,14 @@ pub fn run() {
             let handle = app.handle().clone();
             let icon = tray_image(&handle);
 
-            // macOS: 设置透明标题栏样式 + WebView 透明背景
+            // macOS: 仅设置窗口背景色透明
+            // 注意：不要在此再调用 set_title_bar_style。窗口已在配置中用
+            // titleBarStyle=Transparent 创建（不含 FullSizeContentView），
+            // 运行时再切标题栏样式会重设 styleMask，可能把 Titled 留下，
+            // 导致失焦时冒出原生标题栏（表现为「点桌面/其他窗口出现标题栏」）。
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_title_bar_style(TitleBarStyle::Transparent);
-
                     // 设置窗口背景色为透明
                     let _ = window.set_background_color(Some(tauri::utils::config::Color(0, 0, 0, 0)));
                 }

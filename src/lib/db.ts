@@ -31,6 +31,8 @@ export const DEFAULT_SETTINGS = {
   shortcutToggleWindow: "CmdOrCtrl+Shift+L",
   shortcutFocusMode: "CmdOrCtrl+Shift+F",
   shortcutPin: "CmdOrCtrl+Shift+P",
+  /** 锁定窗口：禁止通过顶栏/拖拽手柄移动整个悬浮窗口 */
+  locked: false,
   // WebDAV 同步（密码不在此处，由 Rust 端加密存储）
   webdavEnabled: false,
   webdavUrl: "",
@@ -55,6 +57,7 @@ export interface AppSettings {
   readonly shortcutToggleWindow: string;
   readonly shortcutFocusMode: string;
   readonly shortcutPin: string;
+  readonly locked: boolean;
   readonly webdavEnabled: boolean;
   readonly webdavUrl: string;
   readonly webdavUser: string;

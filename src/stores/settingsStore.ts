@@ -26,6 +26,7 @@ export interface SettingsState {
   shortcutToggleWindow: string;
   shortcutFocusMode: string;
   shortcutPin: string;
+  locked: boolean;
   initialized: boolean;
   /** 最近一次 DB 写入错误信息，供 UI 展示 */
   lastError: string | null;
@@ -44,6 +45,7 @@ export interface SettingsActions {
   setRemindAdvanceMin: (v: number) => void;
   setFocusMode: (v: boolean) => void;
   setShortcut: (key: "shortcutToggleWindow" | "shortcutFocusMode" | "shortcutPin", value: string) => void;
+  setLocked: (v: boolean) => void;
   /** 供外部同步调用：用 DB 最新值覆盖 store */
   reloadFromDb: () => Promise<void>;
   clearError: () => void;
@@ -227,15 +229,25 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
         },
         () => {
           emitSettingsChanged();
-          invoke("update_shortcuts").catch((e) => {
-            const msg = e instanceof Error ? e.message : String(e);
-            set({ lastError: `快捷键注册失败: ${msg}` });
-            void useSettingsStore.getState().reloadFromDb();
-          });
-        },
-      );
-    },
-  }),
+            invoke("update_shortcuts").catch((e) => {
+              const msg = e instanceof Error ? e.message : String(e);
+              set({ lastError: `快捷键注册失败: ${msg}` });
+              void useSettingsStore.getState().reloadFromDb();
+            });
+          },
+          );
+          },
+
+          setLocked: (v) => {
+          set({ locked: v });
+          dbWrite(
+          saveSetting("locked", v),
+          "saveSetting(locked)",
+          (msg) => set({ lastError: msg }),
+          emitSettingsChanged,
+          );
+          },
+          }),
 );
 
 // ──────────────── 跨窗口设置同步 ────────────────

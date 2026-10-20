@@ -27,11 +27,17 @@ function MainApp() {
 
   const initialized = useSettingsStore((s) => s.initialized);
   const theme = useSettingsStore((s) => s.theme);
+  const locked = useSettingsStore((s) => s.locked);
 
   // 绑定 data-theme 到 html 根节点
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // 锁定状态：给根节点加 ln-locked，由 CSS 关闭窗口拖拽
+  useEffect(() => {
+    document.documentElement.classList.toggle("ln-locked", locked);
+  }, [locked]);
 
   useEffect(() => {
     if (initialized) {
