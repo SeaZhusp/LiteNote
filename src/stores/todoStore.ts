@@ -9,7 +9,6 @@ import {
   clearCompletedTodos as dbClearCompleted,
 } from "@/lib/db";
 import { computeNextDueDate } from "@/lib/recurrence";
-import { parseQuickInput } from "@/lib/parseQuickInput";
 
 // ──────────────── 类型定义 ────────────────
 
@@ -145,19 +144,12 @@ export const useTodoStore = create<TodoStoreState & TodoStoreActions>()(
       const item = get().todos.find((x) => x.id === id);
       if (!item) return;
 
-      // 快速输入增强：解析自然语义日期，自动设置截止时间并从正文剥离
-      const parsed = parseQuickInput(item.text);
-      const updated = {
-        ...item,
-        text: parsed.cleanText,
-        dueDate: parsed.matched ? parsed.dueDate : item.dueDate,
-        // 仅改文本/截止，不刷新 updateTime，避免触发按更新时间回退的重排
-      };
+      // 原样保存文本，不做自然语言日期解析
       set((s) => ({
-        todos: s.todos.map((x) => (x.id === id ? updated : x)),
+        todos: s.todos.map((x) => (x.id === id ? item : x)),
       }));
       dbWrite(
-        updateTodo(updated),
+        updateTodo(item),
         "updateTodo",
         (msg) => set({ lastError: msg }),
       );
