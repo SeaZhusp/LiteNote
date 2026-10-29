@@ -9,7 +9,7 @@
 Lightweight, customizable local to-do desktop widget<br>
 Built with Tauri 2 + React
 
-[Issues](https://github.com/SeaZhusp/LiteNote/issues) · [Changelog](docs/CHANGELOG.md)
+[Issues](https://github.com/SeaZhusp/LiteNote/issues) · [Releases](https://github.com/SeaZhusp/LiteNote/releases)
 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -23,27 +23,37 @@ Built with Tauri 2 + React
 
 ## Why LiteNote
 
-Many to-do and note-taking tools are feature-packed and heavy — not ideal for a sticky-on-desktop quick-capture widget. LiteNote focuses on **local to-do** management: borderless transparent panel, system tray resident, instant toggle with a hotkey. Your data stays on your machine.
+Many to-do and note-taking tools are feature-packed and heavy — not ideal for a sticky-on-desktop quick-capture widget. LiteNote focuses on **local to-do** management: borderless transparent panel, system tray resident, instant toggle with a hotkey. Your data stays on your machine by default, with optional WebDAV sync.
 
 ## Features
 
-- **Local To-Dos** — SQLite storage with create/edit/delete/complete, pin, priority colors, due dates, and drag-to-reorder
+- **Local To-Dos** — SQLite storage with create/edit/complete/delete, pin, four priority colors, due dates, and drag-to-reorder; stored locally by default
 
-- **Recurring Tasks** — Daily/weekly/monthly repeats with customizable time and target day; auto-advances to the next cycle
+- **Notes & Progress** — Attach a note and 0–100% progress to each task; progress is shown right in the list
 
-- **Due Date Reminders** — Set due dates on tasks; system notification 15 minutes before. Recurring tasks remind per their schedule
+- **Recurring Tasks** — Daily / weekly (multi-select weekdays) / monthly (multi-select dates) repeats with customizable time; auto-advances to the next cycle
+
+- **Due Date Reminders** — Customizable lead time (1–1440 minutes); choose a top-right popup (non-intrusive, with Snooze / Got it) or a system notification
 
 - **Week Calendar** — Mon–Sun calendar bar at the top; switch weeks, click a day to filter tasks. Red dot = due tasks, orange dot = overdue
 
-- **Drag-to-Date** — Drag a to-do onto a calendar cell to set its due date instantly
+- **Drag-to-Date** — Drag a to-do onto a calendar cell to set its due date instantly; also copy a to-do to another date
 
-- **Desktop Widget Experience** — Frosted glass transparency, adjustable opacity, always-on-top, minimize to system tray
+- **Focus Mode** — A minimal floating window with only your task list; toggle between Focus and Full mode anytime
 
-- **Multiple Themes** — Choose from Glass, Dark, or Light themes; switch instantly with live preview
+- **Desktop Widget Experience** — Borderless frosted glass, adjustable opacity, custom background image, always-on-top, window lock to prevent accidental dragging, hide to system tray
 
-- **Global Hotkey** — `Ctrl+Shift+L` (`⌘+Shift+L` on macOS) to toggle the main window
+- **Clock & Lunar Date** — Large clock with lunar date, date, and weekday; collapsible
 
-- **Inline Settings & About** — All configuration (appearance, theme, language, startup) in a modal dialog; no separate windows
+- **Multiple Themes** — Choose from Glass, Dark, or Light themes; switch instantly
+
+- **Customizable Hotkeys** — Toggle window, focus mode, and always-on-top are all rebindable (defaults: `Ctrl+Shift+L` / `Ctrl+Shift+F` / `Ctrl+Shift+P`, `⌘` on macOS)
+
+- **WebDAV Sync** — Built-in Jianguoyun preset; background two-way merge every 5 minutes (last-write-wins by update time), plus force upload and restore from cloud
+
+- **Export** — One-click export to a txt file, split into pending and completed sections
+
+- **Inline Settings** — General (opacity, background, reminder mode & lead time, theme, language, autostart), Shortcuts, and Sync tabs, all inside the main window
 
 - **Cross-Platform** — Windows (NSIS installer + portable) and macOS (`.app` / `.dmg`)
 
@@ -56,9 +66,10 @@ Many to-do and note-taking tools are feature-packed and heavy — not ideal for 
 ## Use Cases
 
 - Lightweight to-do list that lives on your desktop
-- Quick capture while gaming, watching videos, or working
+- Quick capture while gaming, watching videos, or working, or stay focused with Focus mode
 - Periodic reminders (drink water, weekly meetings, monthly bills, etc.)
-- Time-sensitive task reminders with local notifications
+- Time-sensitive task reminders (popup or system notification)
+- Multi-device tasks synced through Jianguoyun (WebDAV)
 
 ## Installation
 
