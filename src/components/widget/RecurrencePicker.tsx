@@ -223,7 +223,6 @@ export function RecurrencePicker({
                 <button
                   key={d}
                   type="button"
-                  disabled={daysOfMonth.length === 0}
                   className={daysOfMonth.includes(d) ? btnActiveSm : btnNormalSm}
                   onClick={() => toggleDayOfMonth(d)}
                 >
