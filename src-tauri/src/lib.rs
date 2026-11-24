@@ -8,8 +8,8 @@ use tauri::{
     image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalPosition, Manager, PhysicalPosition, PhysicalRect, Runtime,
-    WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, LogicalPosition, Manager, Runtime, WebviewUrl,
+    WebviewWindowBuilder,
 };
 #[cfg(target_os = "macos")]
 use tauri::{ActivationPolicy, RunEvent, TitleBarStyle};
@@ -1031,61 +1031,46 @@ fn tray_image<R: Runtime>(app: &AppHandle<R>) -> Image<'static> {
     Image::new_owned(rgba, 32, 32)
 }
 
-fn overlaps_axis(start: i32, length: u32, other_start: i32, other_length: u32) -> bool {
-    let start = i64::from(start);
-    let other_start = i64::from(other_start);
-    length > 0
-        && other_length > 0
-        && start < other_start + i64::from(other_length)
-        && other_start < start + i64::from(length)
-}
-
-fn fallback_window_position<'a>(
-    bounds: PhysicalRect<i32, u32>,
-    work_areas: impl Iterator<Item = &'a PhysicalRect<i32, u32>>,
-) -> Option<PhysicalPosition<i32>> {
-    let mut work_areas = work_areas.filter(|area| area.size.width > 0 && area.size.height > 0);
-    let fallback = work_areas.next()?;
-    let visible = std::iter::once(fallback).chain(work_areas).any(|area| {
-        overlaps_axis(
-            bounds.position.x,
-            bounds.size.width,
-            area.position.x,
-            area.size.width,
-        ) && overlaps_axis(
-            bounds.position.y,
-            bounds.size.height,
-            area.position.y,
-            area.size.height,
-        )
-    });
-    if visible {
-        return None;
-    }
-
-    // 窗口大于工作区时，将超出的方向对齐到工作区起点，保留可操作的顶部。
-    let dx = fallback.size.width.saturating_sub(bounds.size.width) / 2;
-    let dy = fallback.size.height.saturating_sub(bounds.size.height) / 2;
-    Some(PhysicalPosition::new(
-        fallback.position.x.saturating_add_unsigned(dx),
-        fallback.position.y.saturating_add_unsigned(dy),
-    ))
-}
-
-/// 保留与任意显示器工作区相交的位置，窗口离屏时优先移到主屏。
+/// 若窗口当前位置完全落在主屏可见区域之外（如多屏断开、分辨率变化、
+/// 或 window-state 恢复了离屏坐标），把它重新锚定到主屏可见区域内。
+/// 否则 `show()` 虽成功，窗口却「看不见」，表现为「启动打不开 / 点托盘也不出来」。
 fn ensure_window_on_screen<R: Runtime>(window: &tauri::WebviewWindow<R>) {
-    let (Ok(position), Ok(size), Ok(monitors)) = (
-        window.outer_position(),
-        window.outer_size(),
-        window.available_monitors(),
-    ) else {
-        return;
+    let app = window.app_handle();
+    let monitor = match app.primary_monitor() {
+        Ok(Some(m)) => m,
+        _ => return,
     };
-    let primary = window.primary_monitor().ok().flatten();
-    // 窗口和工作区都使用虚拟桌面的物理像素，避免混合 DPI 下的坐标偏移。
-    let work_areas = primary.iter().chain(&monitors).map(|m| m.work_area());
-    if let Some(position) = fallback_window_position(PhysicalRect { position, size }, work_areas) {
-        let _ = window.set_position(position);
+    let scale = monitor.scale_factor();
+    let ms = monitor.size();
+    let mp = monitor.position();
+    // 统一换算到逻辑坐标（与 set_position 使用的一致）
+    let (mon_x, mon_y, mon_w, mon_h) = (
+        mp.x as f64 / scale,
+        mp.y as f64 / scale,
+        ms.width as f64 / scale,
+        ms.height as f64 / scale,
+    );
+
+    let pos = match window.outer_position() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let size = match window.outer_size() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    // outer_position/outer_size 返回的是物理像素，需除以 scale 与上面的
+    // 逻辑坐标（mon_x/mon_y/mon_w/mon_h）保持同一坐标系，否则在 Retina
+    // 屏（scale=2）上会误判为离屏而把窗口居中重定位（表现为「拖到某位置点托盘又回去」）。
+    let (px, py) = (pos.x as f64 / scale, pos.y as f64 / scale);
+    let (w, h) = (size.width as f64 / scale, size.height as f64 / scale);
+
+    // 窗口至少有一部分在屏幕内才视为「在屏上」
+    let on_screen = px < mon_x + mon_w && px + w > mon_x && py < mon_y + mon_h && py + h > mon_y;
+    if !on_screen {
+        let new_x = mon_x + (mon_w - w).max(0.0) / 2.0;
+        let new_y = mon_y + 40.0;
+        let _ = window.set_position(LogicalPosition::new(new_x, new_y));
     }
 }
 
@@ -1112,7 +1097,9 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
                 let _ = app.save_window_state(flags);
                 let _ = w.hide();
             } else {
-                show_main_window(app);
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
             }
         }
     }
@@ -1258,86 +1245,4 @@ pub fn run() {
             #[cfg(not(target_os = "macos"))]
             let _ = (app_handle, event);
         });
-}
-
-#[cfg(test)]
-mod window_placement_tests {
-    use super::{fallback_window_position, PhysicalPosition, PhysicalRect};
-    use tauri::PhysicalSize;
-
-    const PRIMARY: PhysicalRect<i32, u32> = rect(0, 0, 1920, 1040);
-
-    const fn rect(x: i32, y: i32, width: u32, height: u32) -> PhysicalRect<i32, u32> {
-        PhysicalRect {
-            position: PhysicalPosition::new(x, y),
-            size: PhysicalSize::new(width, height),
-        }
-    }
-
-    #[test]
-    fn preserves_windows_on_primary_and_secondary_monitors() {
-        assert_eq!(
-            fallback_window_position(rect(120, 100, 360, 620), [&PRIMARY].into_iter()),
-            None
-        );
-        for (x, y) in [(-1920, 0), (1920, 0), (0, -1080), (0, 1080)] {
-            let secondary = rect(x, y, 1920, 1040);
-            let window = rect(x + 120, y + 100, 360, 620);
-            assert_eq!(
-                fallback_window_position(window, [&PRIMARY, &secondary].into_iter()),
-                None
-            );
-        }
-    }
-
-    #[test]
-    fn preserves_windows_at_physical_coordinates_on_mixed_dpi_monitors() {
-        // 主屏 100%，左侧副屏 150%。副屏的 1920×1080 逻辑分辨率对应 2880×1620 物理像素。
-        let secondary = rect(-2880, -180, 2880, 1560);
-        let window = rect(-2700, -100, 540, 930);
-        assert_eq!(
-            fallback_window_position(window, [&PRIMARY, &secondary].into_iter()),
-            None
-        );
-    }
-
-    #[test]
-    fn recenters_windows_after_their_monitor_is_disconnected() {
-        let window = rect(-1800, 120, 360, 620);
-        assert_eq!(
-            fallback_window_position(window, [&PRIMARY].into_iter()),
-            Some(PhysicalPosition::new(780, 210))
-        );
-    }
-
-    #[test]
-    fn requires_positive_overlap_with_a_work_area() {
-        let secondary = rect(1920, 1080, 1920, 1040);
-        let areas = [&PRIMARY, &secondary];
-        let edge_overlap = rect(1919, 1000, 360, 50);
-        let gap = rect(1920, 1000, 360, 50);
-        let taskbar_only = rect(500, 1040, 100, 40);
-        assert_eq!(
-            fallback_window_position(edge_overlap, areas.into_iter()),
-            None
-        );
-        for window in [gap, taskbar_only] {
-            assert!(fallback_window_position(window, areas.into_iter()).is_some());
-        }
-    }
-
-    #[test]
-    fn uses_the_first_valid_work_area_and_keeps_oversized_windows_reachable() {
-        let invalid = rect(0, 0, 0, 1040);
-        let secondary = rect(-800, -600, 800, 560);
-        let window = rect(3000, 3000, 1000, 1200);
-        assert_eq!(
-            fallback_window_position(window, [&invalid, &secondary].into_iter()),
-            Some(PhysicalPosition::new(-800, -600))
-        );
-        assert_eq!(
-            fallback_window_position(window, [&invalid].into_iter()),
-            None
-        );
-    }
 }
